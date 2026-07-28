@@ -376,7 +376,11 @@ ul{ list-style:none; }
     overflow:hidden;
     --edge-fade:1;
   }
-  .about-video{
+  /* Stacked hero stills: painted first, always available instantly
+     (no network wait). script.js crossfades between them in step with
+     the same scroll progress that scrubs the video below, so the
+     stand-in art keeps pace with the scrub instead of just idling. */
+  .about-img{
     position:absolute;
     inset:0;
     width:100%;height:100%;
@@ -384,34 +388,29 @@ ul{ list-style:none; }
     object-fit:cover;
     object-position:28% 32%;
     background:var(--bg-1);
-  }
-
-  /* Loading stand-in: the same set of hero stills, cross-fading in place
-     over the video's footprint. Sits above the video so it fully covers
-     it until script.js hides it once the video actually has a frame to
-     show; z-index is still below the ::after edge-fade overlay so the
-     vignette treatment matches whichever layer is visible. */
-  .about-media-loader{
-    position:absolute;
-    inset:0;
-    z-index:1;
-    background:var(--bg-1);
-    transition: opacity .5s var(--ease);
-  }
-  .about-media-loader.is-hidden{
     opacity:0;
-    pointer-events:none;
   }
-  .loader-img{
+  .about-img:first-child{ opacity:1; }
+
+  .about-video{
     position:absolute;
     inset:0;
     width:100%;height:100%;
+    display:block;
     object-fit:cover;
     object-position:28% 32%;
+    background:transparent;
     opacity:0;
-    transition: opacity .7s var(--ease);
+    transition:opacity .6s ease;
   }
-  .loader-img.is-active{ opacity:1; }
+  /* Added once the video reports 'canplay' (see script.js) — crossfades
+     the video in over the images rather than waiting for a hard swap. */
+  .about-media.video-ready .about-video{ opacity:1; }
+  .about-media.video-ready .about-img{ opacity:0 !important; }
+
+  @media (max-width:860px){
+    .about-img{ display:none; }
+  }
 
   .about-media::after{
     content:"";

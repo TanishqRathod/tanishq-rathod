@@ -100,51 +100,6 @@ revealTargets.forEach((el, i) => {
   io.observe(el);
 });
 
-/* ============ ABOUT: IMAGE LOADER WHILE THE SCRUB VIDEO ISN'T READY ============ */
-(function(){
-  var loader = document.getElementById('aboutLoader');
-  var aboutVideoEl = document.getElementById('aboutVideo');
-  if (!loader || !aboutVideoEl) return;
-
-  var slides = loader.querySelectorAll('.loader-img');
-  if (!slides.length) return;
-
-  var activeIndex = 0;
-  var cycleTimer = null;
-  var hidden = false;
-
-  function cycle(){
-    slides[activeIndex].classList.remove('is-active');
-    activeIndex = (activeIndex + 1) % slides.length;
-    slides[activeIndex].classList.add('is-active');
-  }
-
-  function startCycling(){
-    if (cycleTimer || prefersReducedMotion) return;
-    cycleTimer = setInterval(cycle, 1000);
-  }
-
-  function hideLoader(){
-    if (hidden) return;
-    hidden = true;
-    if (cycleTimer){ clearInterval(cycleTimer); cycleTimer = null; }
-    loader.classList.add('is-hidden');
-  }
-
-  // readyState >= 2 (HAVE_CURRENT_DATA) means a frame is already decoded
-  // and ready to paint, so there's nothing left to wait on.
-  if (aboutVideoEl.readyState >= 2){
-    hideLoader();
-  } else {
-    startCycling();
-    aboutVideoEl.addEventListener('loadeddata', hideLoader, { once: true });
-    // Belt-and-suspenders: some browsers are slow to fire loadeddata on
-    // muted/backgrounded videos, so don't let the stills hang forever.
-    aboutVideoEl.addEventListener('canplay', hideLoader, { once: true });
-    setTimeout(hideLoader, 8000);
-  }
-})();
-
 /* ============ ABOUT + EXPERIENCE: SCROLL-SCRUBBED VIDEO ============ */
 (function(){
   var media = document.getElementById('portraitTravel');
@@ -152,7 +107,8 @@ revealTargets.forEach((el, i) => {
   var experience = document.getElementById('experience');
   var about = document.getElementById('about');
   var video = document.getElementById('aboutVideo');
-  if(!media || !dock || !experience || !video) return;
+  var imgs  = media ? media.querySelectorAll('.about-img') : [];
+  if(!media || !dock || !experience || !video || !imgs.length) return;
 
   var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   var desktopQuery = window.matchMedia('(min-width:861px)');
@@ -162,6 +118,23 @@ revealTargets.forEach((el, i) => {
   var videoDuration = 0;
   var videoPrimed = false;
   var durationResolved = false;
+  var videoReady = false;
+
+  // The images crossfade from the first instant (no network wait) and
+  // keep working as a fallback for the whole session. Only once the
+  // video reports 'canplay' (enough buffered to play without
+  // immediately stalling) do we reveal it — CSS then crossfades video
+  // over the images. If the video later stalls mid-scrub, the images
+  // stay correctly hidden underneath rather than reappearing, since a
+  // frozen video frame still reads better than a flicker back to a
+  // static image.
+  function markVideoReady(){
+    if(videoReady) return;
+    videoReady = true;
+    media.classList.add('video-ready');
+  }
+  video.addEventListener('canplay', markVideoReady);
+  if(video.readyState >= 3){ markVideoReady(); }
 
   function primeVideo(){
     if(videoPrimed) return;
@@ -249,11 +222,50 @@ revealTargets.forEach((el, i) => {
     if(p && p.catch) p.catch(function(){});
   }
 
+  // Only seek to a point in the video if that point has actually
+  // downloaded. Without this guard, fast scrolling during the
+  // scroll-scrub effect asks the browser to jump into an unbuffered
+  // region, which forces it to pause and wait on a network round
+  // trip — this is what shows up as the video "stopping halfway".
+  // Skipping the seek here just means the video catches up on the
+  // next scroll tick instead of stalling visibly.
+  function isBuffered(t){
+    var b = video.buffered;
+    for(var i = 0; i < b.length; i++){
+      if(t >= b.start(i) && t <= b.end(i)) return true;
+    }
+    return false;
+  }
+
   function seekTo(t){
     if(video.readyState < 1) return;
     if(!isFinite(t)) return;
     if(Math.abs(video.currentTime - t) < 0.008) return;
+    if(!isBuffered(t)) return;
     try{ video.currentTime = t; } catch(e){}
+  }
+
+  // Drives the crossfade across the stacked hero stills. Kept running
+  // even after the video takes over visually (cheap — just opacity
+  // math) so the images are already at the right frame the instant a
+  // video stall makes them the visible fallback again.
+  function updateImages(progress){
+    if(reduceMotion){
+      imgs.forEach(function(img, i){
+        img.style.opacity = (progress < 1 ? i === 0 : i === imgs.length - 1) ? 1 : 0;
+      });
+      return;
+    }
+    var seg = progress * (imgs.length - 1);
+    var idx = Math.floor(seg);
+    if(idx > imgs.length - 2) idx = imgs.length - 2;
+    var frac = seg - idx;
+    imgs.forEach(function(img, i){
+      var o = 0;
+      if(i === idx) o = 1 - frac;
+      else if(i === idx + 1) o = frac;
+      img.style.opacity = o;
+    });
   }
 
   function update(){
@@ -294,6 +306,8 @@ revealTargets.forEach((el, i) => {
     if(lineT < 0) lineT = 0;
     if(lineT > 1) lineT = 1;
     experience.style.setProperty('--experience-border-alpha', (1 - lineT).toFixed(3));
+
+    updateImages(progress);
 
     if(reduceMotion){
       seekTo(progress < 1 ? 0 : Math.max(videoDuration - 0.05, 0));

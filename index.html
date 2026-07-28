@@ -34,7 +34,7 @@
 
 <!-- HERO -->
 <header class="hero" id="hero">
-  <video class="hero-video" id="heroVideo" autoplay muted playsinline poster="">
+  <video class="hero-video" id="heroVideo" autoplay muted playsinline poster="assets/hero1.png">
     <source src="assets/teresa_hero.mp4" type="video/mp4">
   </video>
   <div class="hero-veil"></div>
@@ -66,17 +66,20 @@
   <!-- ABOUT and EXPERIENCE -->
 <section class="about" id="about">
   <div class="about-media" id="portraitTravel" aria-hidden="true">
-    <!-- Shown while the scrub video hasn't produced a usable frame yet.
-         Cycles through the hero stills, then fades out as soon as the
-         video reports it has data to display (see script.js). -->
-    <div class="about-media-loader" id="aboutLoader">
-      <img class="loader-img is-active" src="assets/hero1.png" alt="">
-      <img class="loader-img" src="assets/hero2.png" alt="">
-      <img class="loader-img" src="assets/hero3.png" alt="">
-      <img class="loader-img" src="assets/hero4.png" alt="">
-      <img class="loader-img" src="assets/hero5.png" alt="">
-    </div>
-    <!-- <video class="about-video" id="aboutVideo" src="assets/teresa.mp4" muted playsinline preload="auto"></video> -->
+    <!-- Static crossfading images: painted first, always available
+         instantly (no network wait), and driven by the same scroll
+         progress that scrubs the video. The video sits on top and
+         stays invisible (opacity:0) until it actually reports it can
+         play smoothly — at that point .video-ready gets added to
+         .about-media, and CSS handles a soft crossfade from images to
+         video. If the video stalls or fails, the images are still
+         there underneath the whole time — nothing ever goes blank. -->
+    <img class="about-img" src="assets/hero1.png" alt="">
+    <img class="about-img" src="assets/hero2.png" alt="">
+    <img class="about-img" src="assets/hero3.png" alt="">
+    <img class="about-img" src="assets/hero4.png" alt="">
+    <img class="about-img" src="assets/hero5.png" alt="">
+    <video class="about-video" id="aboutVideo" src="assets/teresa.mp4" muted playsinline preload="auto"></video>
   </div>
   <div class="wrap">
     <p class="section-eyebrow">01 / About</p>
