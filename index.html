@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tanishq — AI/ML Engineer</title>
+<meta name="description" content="Tanishq — AI/ML Engineer portfolio. Data Science, Machine Learning, and applied AI systems.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Progress rail -->
+<div class="signal-rail" aria-hidden="true"><span id="railFill"></span></div>
+
+<!-- Nav -->
+<nav class="nav" id="siteNav">
+  <a href="#hero" class="nav-mark">TQ<span class="dot">·</span></a>
+  <button class="nav-toggle" id="navToggle" aria-label="Toggle menu" aria-expanded="false">
+    <span></span><span></span><span></span>
+  </button>
+  <ul class="nav-links" id="navLinks">
+    <li><a href="#hero">Home</a></li>
+    <li><a href="#about">About</a></li>
+    <li><a href="#experience">Experience</a></li>
+    <li><a href="#projects">Projects</a></li>
+    <li><a href="#model">Model</a></li>
+    <li><a href="#skills">Skills</a></li>
+    <li><a href="#contact">Contact</a></li>
+  </ul>
+</nav>
+
+<!-- HERO -->
+<header class="hero" id="hero">
+  <video class="hero-video" id="heroVideo" autoplay muted playsinline poster="assets/hero1.png">
+    <source src="assets/teresa_hero.mp4" type="video/mp4">
+  </video>
+  <div class="hero-veil"></div>
+  <div class="hero-grain" aria-hidden="true"></div>
+
+  <button class="skip-intro" id="skipIntro" type="button">Skip intro</button>
+
+  <div class="hero-content" id="heroContent">
+    <p class="eyebrow reveal-item" data-delay="0">Data Scientist / ML Engineer</p>
+    <h1 class="hero-title">
+      <span class="reveal-line" data-delay="1"><span>Tanishq Rathod</span></span>
+      <span class="reveal-line accent" data-delay="2"><span>Turning Data into Intelligent Solutions.</span></span>
+    </h1>
+    <p class="hero-sub reveal-item" data-delay="4">I build AI-powered applications using Machine Learning, Deep Learning, Computer Vision, and Generative AI—transforming complex data into intelligent, scalable, and impactful solutions.</p>
+    <div class="hero-cta reveal-item" data-delay="5">
+      <a href="#projects" class="btn btn-primary">View projects</a>
+      <a href="#contact" class="btn btn-ghost">Get in touch</a>
+    </div>
+  </div>
+
+  <div class="scroll-cue reveal-item" data-delay="6" aria-hidden="true">
+    <span>scroll</span>
+    <div class="scroll-line"><i></i></div>
+  </div>
+</header>
+
+<main>
+
+  <!-- ABOUT and EXPERIENCE -->
+<section class="about" id="about">
+  <div class="about-media" id="portraitTravel" aria-hidden="true">
+    <!-- Shown while the scrub video hasn't produced a usable frame yet.
+         Cycles through the hero stills, then fades out as soon as the
+         video reports it has data to display (see script.js). -->
+    <div class="about-media-loader" id="aboutLoader">
+      <img class="loader-img is-active" src="assets/hero1.png" alt="">
+      <img class="loader-img" src="assets/hero2.png" alt="">
+      <img class="loader-img" src="assets/hero3.png" alt="">
+      <img class="loader-img" src="assets/hero4.png" alt="">
+      <img class="loader-img" src="assets/hero5.png" alt="">
+    </div>
+    <video class="about-video" id="aboutVideo" src="assets/teresa.mp4" muted playsinline preload="auto"></video>
+  </div>
+  <div class="wrap">
+    <p class="section-eyebrow">01 / About</p>
+    <h2 class="section-title">Building AI with Purpose.</h2>
+    <p class="about-copy">AI isn't just a technology to me—it's a way to solve problems that matter.</p>
+    <p class="about-copy">I'm Tanishq Rathod, a Data Scientist focused on Machine Learning, Deep Learning, Computer Vision, and Intelligent Automation. I build end-to-end AI solutions that transform raw data into accurate predictions and actionable insights.</p>
+    <p class="about-copy">From feature engineering and model development to deployment and optimization, I enjoy creating scalable systems that make a real impact. I'm always exploring new AI technologies and continuously improving my skills to build smarter, faster, and more reliable solutions.</p>
+  </div>
+</section>
+
+<section id="experience">
+  <div class="wrap experience-grid" style="display:grid;grid-template-columns:1.3fr 0.9fr;gap:56px;">
+    <div class="experience-text">
+      <p class="section-eyebrow">02 / Experience</p>
+      <h2 class="section-title">Where the work happened.</h2>
+      <div class="exp-item">
+        <div class="exp-head">
+          <h3>Data Scientist · Accenture</h3>
+          <span class="exp-meta">2024 – Present</span>
+        </div>
+        <p>Designing and deploying intelligent AI solutions that transform raw data into business value through machine learning, deep learning, and automation.</p>
+        <ul class="exp-highlights">
+          <li>Built end-to-end ML pipelines for enterprise applications.</li>
+          <li>Developed predictive models using TensorFlow and Scikit-learn.</li>
+          <li>Automated data preprocessing and model training workflows.</li>
+          <li>Improved model accuracy through feature engineering and optimization.</li>
+          <li>Delivered scalable AI solutions in Agile development environments.</li>
+        </ul>
+      </div>
+    </div>
+    <!-- the video "docks" into this empty slot as you scroll -->
+    <div class="experience-portrait-slot" id="portraitDock"></div>
+  </div>
+</section>
+
+  <!-- PROJECTS -->
+  <section class="section" id="projects">
+    <div class="wrap">
+      <p class="section-eyebrow">03 / Projects</p>
+      <h2 class="section-title">Selected work.</h2>
+
+      <div class="project-grid">
+        <article class="project-card featured">
+          <div class="project-visual pv-1" aria-hidden="true"><canvas class="mini-canvas" data-variant="net"></canvas></div>
+          <div class="project-body">
+            <div class="project-tags"><span>Python</span><span>TensorFlow</span><span>CNN</span><span>OpenCV</span><span>FastAPI</span></div>
+            <h3>Potato Disease Detection using Deep Learning</h3>
+            <p>Developed a deep learning solution that identifies potato leaf diseases from images, enabling faster and more accurate crop health assessment.</p>
+            <a href="#" class="project-link">View case study →</a>
+          </div>
+        </article>
+
+        <article class="project-card">
+          <div class="project-visual pv-2" aria-hidden="true"><canvas class="mini-canvas" data-variant="wave"></canvas></div>
+          <div class="project-body">
+            <div class="project-tags"><span>Python</span><span>TensorFlow</span><span>ANN</span><span>Keras</span><span>Scikit-learn</span></div>
+            <h3>Customer Churn Prediction</h3>
+            <p>Developed an ANN-based predictive model that identifies customers likely to leave a service, helping businesses improve retention strategies.</p>
+            <a href="#" class="project-link">View case study →</a>
+          </div>
+        </article>
+
+        <article class="project-card">
+          <div class="project-visual pv-3" aria-hidden="true"><canvas class="mini-canvas" data-variant="grid"></canvas></div>
+          <div class="project-body">
+            <div class="project-tags"><span>Computer Vision</span><span>PyTorch</span></div>
+            <h3>Defect Detection Model</h3>
+            <p>Vision model for identifying manufacturing defects from line images, deployed with a lightweight review UI for human-in-the-loop correction.</p>
+            <a href="#" class="project-link">View case study →</a>
+          </div>
+        </article>
+        <article class="project-card featured">
+          <div class="project-body">
+            <div class="project-tags"><span>Python</span><span>TensorFlow</span><span>ANN</span><span>Keras</span><span>Scikit-learn</span></div>
+            <h3>Customer Churn Prediction</h3>
+            <p>Developed an ANN-based predictive model that identifies customers likely to leave a service, helping businesses improve retention strategies.</p>
+            <a href="#" class="project-link">View case study →</a>
+          </div>
+          <div class="project-visual pv-4" aria-hidden="true"><canvas class="mini-canvas" data-variant="scatter"></canvas></div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3D MODEL -->
+  <section class="section alt model-section" id="model">
+    <div class="wrap">
+      <p class="section-eyebrow">04 / Model</p>
+      <h2 class="section-title">A live look inside the network.</h2>
+      <p class="model-copy">My own 3D model, rendered live in the browser. Drag to rotate, scroll to get closer.</p>
+      <div class="model-stage">
+        <canvas id="modelCanvas"></canvas>
+        <div class="model-hint">MEET TERESA</div>
+        <div class="model-loading" id="modelLoading">Loading model…</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SKILLS -->
+  <section class="section" id="skills">
+    <div class="wrap">
+      <p class="section-eyebrow">05 / Skills</p>
+      <h2 class="section-title">Toolkit.</h2>
+
+      <div class="skills-grid">
+        <div class="skill-card">
+          <h3>Programming</h3>
+          <div class="skill-bars">
+            <div class="skill-row"><span>Python</span><div class="bar"><i style="--v:90%"></i></div></div>
+            <div class="skill-row"><span>SQL</span><div class="bar"><i style="--v:95%"></i></div></div>
+            <div class="skill-row"><span>JavaScript</span><div class="bar"><i style="--v:55%"></i></div></div>
+            <div class="skill-row"><span>HTML5</span><div class="bar"><i style="--v:65%"></i></div></div>
+            <div class="skill-row"><span>CSS3</span><div class="bar"><i style="--v:65%"></i></div></div>
+          </div>
+        </div>
+        <div class="skill-card">
+          <h3>Machine Learning</h3>
+          <div class="skill-bars">
+            <div class="skill-row"><span>Regression</span><div class="bar"><i style="--v:90%"></i></div></div>
+            <div class="skill-row"><span>Classification</span><div class="bar"><i style="--v:92%"></i></div></div>
+            <div class="skill-row"><span>Clustering</span><div class="bar"><i style="--v:85%"></i></div></div>
+            <div class="skill-row"><span>Feature Engineering</span><div class="bar"><i style="--v:85%"></i></div></div>
+            <div class="skill-row"><span>Hyperparameter Tuning</span><div class="bar"><i style="--v:85%"></i></div></div>
+            <div class="skill-row"><span>Cross Validation</span><div class="bar"><i style="--v:85%"></i></div></div>
+            <div class="skill-row"><span>Ensemble Learning</span><div class="bar"><i style="--v:85%"></i></div></div>
+          </div>
+        </div>
+        <div class="skill-card">
+          <h3>Deep Learning</h3>
+          <div class="skill-bars">
+            <div class="skill-row"><span>TensorFlow</span><div class="bar"><i style="--v:93%"></i></div></div>
+            <div class="skill-row"><span>Keras</span><div class="bar"><i style="--v:70%"></i></div></div>
+            <div class="skill-row"><span>ANN</span><div class="bar"><i style="--v:60%"></i></div></div>
+            <div class="skill-row"><span>CNN</span><div class="bar"><i style="--v:60%"></i></div></div>
+            <div class="skill-row"><span>Transfer Learning</span><div class="bar"><i style="--v:60%"></i></div></div>
+          </div>
+        </div>
+        <div class="skill-card">
+          <h3>Computer Vision</h3>
+          <div class="skill-bars">
+            <div class="skill-row"><span>OpenCV</span><div class="bar"><i style="--v:80%"></i></div></div>
+            <div class="skill-row"><span>YOLOv8</span><div class="bar"><i style="--v:60%"></i></div></div>
+            <div class="skill-row"><span>EasyOCR</span><div class="bar"><i style="--v:60%"></i></div></div>
+          </div>
+        </div>
+        <div class="skill-card">
+          <h3>Data Science</h3>
+          <div class="skill-bars">
+            <div class="skill-row"><span>NumPy</span><div class="bar"><i style="--v:80%"></i></div></div>
+            <div class="skill-row"><span>Pandas</span><div class="bar"><i style="--v:80%"></i></div></div>
+            <div class="skill-row"><span>Scikit-learn</span><div class="bar"><i style="--v:80%"></i></div></div>
+            <div class="skill-row"><span>Exploratory Data Analysis (EDA)</span><div class="bar"><i style="--v:80%"></i></div></div>
+            <div class="skill-row"><span>PCA</span><div class="bar"><i style="--v:80%"></i></div></div>
+          </div>
+        </div>
+        <div class="skill-card">
+          <h3>Data Visualization & BI</h3>
+          <div class="skill-bars">
+            <div class="skill-row"><span>Power BI</span><div class="bar"><i style="--v:80%"></i></div></div>
+            <div class="skill-row"><span>Excel</span><div class="bar"><i style="--v:85%"></i></div></div>
+            <div class="skill-row"><span>DAX</span><div class="bar"><i style="--v:75%"></i></div></div>
+            <div class="skill-row"><span>Matplotlib</span><div class="bar"><i style="--v:75%"></i></div></div>
+            <div class="skill-row"><span>Seaborn</span><div class="bar"><i style="--v:75%"></i></div></div>
+            <div class="skill-row"><span>Power Query</span><div class="bar"><i style="--v:75%"></i></div></div>
+          </div>
+        </div>
+        <div class="skill-card">
+          <h3>Development</h3>
+          <div class="skill-bars">
+            <div class="skill-row"><span>Fast API</span><div class="bar"><i style="--v:80%"></i></div></div>
+            <div class="skill-row"><span>Rest API</span><div class="bar"><i style="--v:85%"></i></div></div>
+            <div class="skill-row"><span>Gemini API</span><div class="bar"><i style="--v:85%"></i></div></div>
+            <div class="skill-row"><span>Git & GitHub</span><div class="bar"><i style="--v:75%"></i></div></div>
+          </div>
+        </div>
+        <div class="skill-card">
+          <h3>Tools</h3>
+          <div class="skill-bars">
+            <div class="skill-row"><span>VS Code</span><div class="bar"><i style="--v:80%"></i></div></div>
+            <div class="skill-row"><span>Jupyter Notebook</span><div class="bar"><i style="--v:85%"></i></div></div>
+            <div class="skill-row"><span>Google Colab</span><div class="bar"><i style="--v:75%"></i></div></div>
+            <div class="skill-row"><span>Android Studio</span><div class="bar"><i style="--v:75%"></i></div></div>
+            <div class="skill-row"><span>Postman</span><div class="bar"><i style="--v:75%"></i></div></div>
+          </div>
+        </div>
+        <div class="skill-card">
+          <h3>Databases</h3>
+          <div class="skill-bars">
+            <div class="skill-row"><span>My SQL</span><div class="bar"><i style="--v:80%"></i></div></div>
+            <div class="skill-row"><span>SQL Server</span><div class="bar"><i style="--v:85%"></i></div></div>
+            <div class="skill-row"><span>Firebase</span><div class="bar"><i style="--v:75%"></i></div></div>
+          </div>
+        </div>
+        <div class="skill-card">
+          <h3>Other Skills</h3>
+          <div class="skill-bars">
+            <div class="skill-row"><span>Flutter</span><div class="bar"><i style="--v:75%"></i></div></div>
+            <div class="skill-row"><span>3D Modeling</span><div class="bar"><i style="--v:80%"></i></div></div>
+            <div class="skill-row"><span>UI/UX Design</span><div class="bar"><i style="--v:85%"></i></div></div>
+            <div class="skill-row"><span>Video Editing</span><div class="bar"><i style="--v:75%"></i></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTACT -->
+  <section class="section alt" id="contact">
+    <div class="wrap contact-wrap">
+      <p class="section-eyebrow">06 / Contact</p>
+      <h2 class="section-title">Let's build something.</h2>
+      <p class="contact-copy">Open to ML engineering and data science roles, collaborations, and interesting problems in general. The fastest way to reach me is email.</p>
+
+      <div class="contact-grid">
+        <form class="contact-form" id="contactForm">
+          <div class="field">
+            <label for="cf-name">Name</label>
+            <input id="cf-name" name="name" type="text" required autocomplete="name">
+          </div>
+          <div class="field">
+            <label for="cf-email">Email</label>
+            <input id="cf-email" name="email" type="email" required autocomplete="email">
+          </div>
+          <div class="field">
+            <label for="cf-msg">Message</label>
+            <textarea id="cf-msg" name="message" rows="4" required></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary">Send message</button>
+          <p class="form-note" id="formNote" role="status"></p>
+        </form>
+
+        <div class="contact-links">
+          <a href="mailto:developerastanishq@gmail.com" class="contact-link">
+            <span class="cl-label">Email</span>
+            <span class="cl-value">developerastanishq@gmail.com</span>
+          </a>
+          <a href="https://linkedin.com/in/tanishqrathod/" class="contact-link">
+            <span class="cl-label">LinkedIn</span>
+            <span class="cl-value">Connect →</span>
+          </a>
+          <a href="https://github.com/TanishqRathod" class="contact-link">
+            <span class="cl-label">GitHub</span>
+            <span class="cl-value">View Projects →</span>
+          </a>
+          <a href="https://drive.google.com/file/d/1cv2K5IEZfL8VNsR43UiPTw2vZJZyV2Ob/view?usp=sharing" class="contact-link">
+            <span class="cl-label">Resume</span>
+            <span class="cl-value">Download PDF</span>
+          </a>
+          <a href="https://maps.app.goo.gl/DddenQrjZnAVyVP39" class="contact-link">
+            <span class="cl-label">Location</span>
+            <span class="cl-value">Ahmedabad, Gujarat</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="wrap footer-inner">
+      <p class="footer-tagline">Let's build intelligent solutions together.</p>
+      <p class="footer-sub">Turning ideas into AI-powered reality.</p>
+      <p class="footer-bottom">© <span id="year"></span> Tanishq Rathod. All Rights Reserved.</p>
+    </div>
+  </footer>
+
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
