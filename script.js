@@ -234,21 +234,37 @@ if (!document.getElementById('splash')) armHeroReveal();
 /* ============ NAV: scrolled state + mobile toggle ============ */
 const navToggle = document.getElementById('navToggle');
 const navLinks = document.getElementById('navLinks');
+const navBackdrop = document.getElementById('navBackdrop');
+const navClose = document.getElementById('navClose');
 
 window.addEventListener('scroll', () => {
   nav.classList.toggle('is-scrolled', window.scrollY > 40);
   updateRail();
 }, { passive: true });
 
+function openMenu(){
+  navLinks.classList.add('is-open');
+  navToggle.classList.add('is-active');
+  navToggle.setAttribute('aria-expanded', true);
+  navBackdrop.classList.add('is-visible');
+  document.body.style.overflow = 'hidden';
+}
+function closeMenu(){
+  navLinks.classList.remove('is-open');
+  navToggle.classList.remove('is-active');
+  navToggle.setAttribute('aria-expanded', false);
+  navBackdrop.classList.remove('is-visible');
+  document.body.style.overflow = '';
+}
+
 navToggle.addEventListener('click', () => {
-  const open = navLinks.classList.toggle('is-open');
-  navToggle.setAttribute('aria-expanded', open);
+  navLinks.classList.contains('is-open') ? closeMenu() : openMenu();
 });
+if (navClose) navClose.addEventListener('click', closeMenu);
+if (navBackdrop) navBackdrop.addEventListener('click', closeMenu);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
 navLinks.querySelectorAll('a').forEach(a => {
-  a.addEventListener('click', () => {
-    navLinks.classList.remove('is-open');
-    navToggle.setAttribute('aria-expanded', false);
-  });
+  a.addEventListener('click', closeMenu);
 });
 
 /* ============ SCROLL PROGRESS RAIL ============ */
@@ -526,11 +542,18 @@ revealTargets.forEach((el, i) => {
 })();
 
 /* ============ PROJECT MINI CANVASES (ambient particle sketches) ============ */
+/* Each canvas only runs its animation loop while it's actually visible in
+   the viewport (IntersectionObserver), so off-screen cards don't burn CPU
+   on the main thread. That headroom matters most right as someone scrolls
+   toward the 3D Model section further down the page — with fewer things
+   competing for the thread, there's less chance a heavy frame (like the
+   model's first shader compile) lines up with a visible stutter. */
 function initMiniCanvas(canvas){
   const variant = canvas.dataset.variant;
   const ctx = canvas.getContext('2d');
   let w, h, dpr;
   const points = [];
+  let running = false;
 
   function resize(){
     dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -601,11 +624,36 @@ function initMiniCanvas(canvas){
         ctx.fill();
       });
     }
-
-    if (!prefersReducedMotion) requestAnimationFrame(draw);
   }
 
-  resize(); seed(); draw();
+  function loop(){
+    if (!running) return;
+    draw();
+    if (!prefersReducedMotion) requestAnimationFrame(loop);
+  }
+
+  resize(); seed();
+
+  if (typeof IntersectionObserver !== 'undefined'){
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting){
+          if (!running){
+            running = true;
+            loop();
+          }
+        } else {
+          running = false;
+        }
+      });
+    }, { rootMargin: '80px' });
+    obs.observe(canvas);
+  } else {
+    // No IntersectionObserver support — fall back to always-on animation.
+    running = true;
+    loop();
+  }
+
   window.addEventListener('resize', () => { resize(); seed(); });
 }
 
@@ -766,6 +814,11 @@ skillCards.forEach(c => skillIO.observe(c));
     fallbackParticles = particlePoints;
 
     group.add(fallbackGroup);
+
+    // Same reasoning as the successful-load path below: pay the one-time
+    // shader-compile cost right now, off the scroll/interaction path,
+    // instead of on whatever frame happens to render this first.
+    renderer.compile(scene, camera);
   }
 
   if (typeof THREE.GLTFLoader !== 'undefined'){
@@ -791,6 +844,12 @@ skillCards.forEach(c => skillIO.observe(c));
       (gltf) => {
         frameObject(gltf.scene);
         group.add(gltf.scene);
+        // Shader compilation is a synchronous, blocking step that Three.js
+        // otherwise defers to the first actual render() call. Doing it here
+        // — right when the asset finishes loading — means that cost lands
+        // once, predictably, instead of stalling whatever scroll or drag
+        // frame happens to be the first one to render the new mesh.
+        renderer.compile(scene, camera);
         hideLoading();
         console.log('[model] Loaded successfully from', MODEL_URL);
       },
