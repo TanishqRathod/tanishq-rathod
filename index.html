@@ -10,7 +10,64 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="is-loading">
+
+<!-- ============ SPLASH SCREEN ============ -->
+<!-- Shown immediately on load, before anything else paints meaningfully.
+     script.js drives the percentage by actually loading the hero video
+     first (highest weight), then the secondary video and hero stills,
+     so 0–100% reflects real bytes fetched rather than a fake timer. -->
+<div class="splash" id="splash" role="status" aria-live="polite">
+  <div class="splash-field" aria-hidden="true"></div>
+
+  <div class="splash-content">
+    <div class="splash-logo" aria-hidden="true">
+      <svg class="neural-logo" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+        <g class="neural-links" fill="none" stroke="url(#neuralGrad)" stroke-width="1">
+          <line x1="24" y1="30" x2="64" y2="16"></line>
+          <line x1="24" y1="30" x2="64" y2="64"></line>
+          <line x1="24" y1="64" x2="64" y2="64"></line>
+          <line x1="24" y1="64" x2="24" y2="30"></line>
+          <line x1="24" y1="64" x2="64" y2="112"></line>
+          <line x1="24" y1="98" x2="64" y2="64"></line>
+          <line x1="24" y1="98" x2="64" y2="112"></line>
+          <line x1="64" y1="16" x2="104" y2="30"></line>
+          <line x1="64" y1="16" x2="104" y2="64"></line>
+          <line x1="64" y1="64" x2="104" y2="30"></line>
+          <line x1="64" y1="64" x2="104" y2="64"></line>
+          <line x1="64" y1="64" x2="104" y2="98"></line>
+          <line x1="64" y1="112" x2="104" y2="64"></line>
+          <line x1="64" y1="112" x2="104" y2="98"></line>
+        </g>
+        <g class="neural-nodes" fill="#0a0c14" stroke-width="2">
+          <circle cx="24" cy="30" r="4"></circle>
+          <circle cx="24" cy="64" r="4"></circle>
+          <circle cx="24" cy="98" r="4"></circle>
+          <circle cx="64" cy="16" r="4.5"></circle>
+          <circle cx="64" cy="64" r="6" class="neural-core"></circle>
+          <circle cx="64" cy="112" r="4.5"></circle>
+          <circle cx="104" cy="30" r="4"></circle>
+          <circle cx="104" cy="64" r="4"></circle>
+          <circle cx="104" cy="98" r="4"></circle>
+        </g>
+        <defs>
+          <linearGradient id="neuralGrad" x1="0" y1="0" x2="128" y2="128">
+            <stop offset="0" stop-color="#8b7cf6"></stop>
+            <stop offset="1" stop-color="#4fd6e8"></stop>
+          </linearGradient>
+        </defs>
+      </svg>
+    </div>
+
+    <p class="splash-name">TANISHQ RATHOD</p>
+    <p class="splash-status" id="splashStatus">Initializing experience…</p>
+
+    <div class="splash-progress">
+      <div class="splash-bar"><i id="splashBarFill"></i></div>
+      <span class="splash-percent" id="splashPercent">0%</span>
+    </div>
+  </div>
+</div>
 
 <!-- Progress rail -->
 <div class="signal-rail" aria-hidden="true"><span id="railFill"></span></div>
@@ -34,9 +91,7 @@
 
 <!-- HERO -->
 <header class="hero" id="hero">
-  <video class="hero-video" id="heroVideo" autoplay muted playsinline poster="assets/teresa_open_hands.png">
-    <source src="assets/teresa_hero.mp4" type="video/mp4">
-  </video>
+  <video class="hero-video" id="heroVideo" muted playsinline preload="none" poster="assets/teresa_open_hands.png" data-src="assets/teresa_hero.mp4"></video>
   <div class="hero-veil"></div>
   <div class="hero-grain" aria-hidden="true"></div>
 
@@ -79,7 +134,7 @@
     <img class="about-img" src="assets/hero3.png" alt="">
     <img class="about-img" src="assets/hero4.png" alt="">
     <img class="about-img" src="assets/hero5.png" alt="">
-    <video class="about-video" id="aboutVideo" src="assets/teresa.mp4" muted playsinline preload="auto"></video>
+    <video class="about-video" id="aboutVideo" muted playsinline preload="none" data-src="assets/teresa.mp4"></video>
   </div>
   <div class="wrap">
     <p class="section-eyebrow">01 / About</p>
@@ -132,7 +187,7 @@
           </div>
         </article>
 
-        <!-- <article class="project-card">
+        <article class="project-card">
           <div class="project-visual pv-2" aria-hidden="true"><canvas class="mini-canvas" data-variant="wave"></canvas></div>
           <div class="project-body">
             <div class="project-tags"><span>Python</span><span>TensorFlow</span><span>ANN</span><span>Keras</span><span>Scikit-learn</span></div>
@@ -150,7 +205,7 @@
             <p>Vision model for identifying manufacturing defects from line images, deployed with a lightweight review UI for human-in-the-loop correction.</p>
             <a href="#" class="project-link">View case study →</a>
           </div>
-        </article> -->
+        </article>
         <article class="project-card featured">
           <div class="project-body">
             <div class="project-tags"><span>Python</span><span>TensorFlow</span><span>ANN</span><span>Keras</span><span>Scikit-learn</span></div>

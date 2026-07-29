@@ -1,3 +1,160 @@
+/* ============ SPLASH SCREEN: real-progress preloader ============ */
+/* Runs first, before anything else. Fetches the hero video (highest
+   weight, so the hero never stalls once the splash drops), then the
+   secondary about-video and the hero stills, and drives the 0–100%
+   readout from actual bytes received rather than a fake timer.
+   Videos are pulled in as blobs and handed to their <video> elements
+   as object URLs, so by the time the splash fades the hero video is
+   already fully buffered and can play instantly. */
+(function(){
+  var splash = document.getElementById('splash');
+  if(!splash) return;
+
+  var barFill = document.getElementById('splashBarFill');
+  var percentEl = document.getElementById('splashPercent');
+  var statusEl = document.getElementById('splashStatus');
+  var heroVideo = document.getElementById('heroVideo');
+  var aboutVideo = document.getElementById('aboutVideo');
+
+  var statusSteps = [
+    [0, 'Initializing experience…'],
+    [12, 'Loading hero visuals…'],
+    [55, 'Buffering supporting media…'],
+    [85, 'Calibrating interface…'],
+    [98, 'Finishing up…']
+  ];
+
+  var assets = [
+    { url: heroVideo && heroVideo.dataset.src, weight: 55, target: heroVideo, kind: 'video', progress: 0 },
+    { url: aboutVideo && aboutVideo.dataset.src, weight: 20, target: aboutVideo, kind: 'video', progress: 0 },
+    { url: 'assets/hero1.png', weight: 5, kind: 'image', progress: 0 },
+    { url: 'assets/hero2.png', weight: 5, kind: 'image', progress: 0 },
+    { url: 'assets/hero3.png', weight: 5, kind: 'image', progress: 0 },
+    { url: 'assets/hero4.png', weight: 5, kind: 'image', progress: 0 },
+    { url: 'assets/hero5.png', weight: 5, kind: 'image', progress: 0 }
+  ].filter(function(a){ return !!a.url; });
+
+  var totalWeight = assets.reduce(function(sum, a){ return sum + a.weight; }, 0) || 1;
+  var displayed = 0;
+  var allSettled = false;
+
+  function statusFor(pct){
+    var msg = statusSteps[0][1];
+    for(var i = 0; i < statusSteps.length; i++){
+      if(pct >= statusSteps[i][0]) msg = statusSteps[i][1];
+    }
+    return msg;
+  }
+
+  function targetPercent(){
+    if(allSettled) return 100;
+    var loaded = assets.reduce(function(sum, a){ return sum + a.weight * a.progress; }, 0);
+    return Math.min(99, (loaded / totalWeight) * 100);
+  }
+
+  function tick(){
+    var target = targetPercent();
+    displayed += Math.max(0.5, (target - displayed) / 5);
+    if(displayed > target) displayed = target;
+
+    var rounded = Math.round(displayed);
+    if(percentEl) percentEl.textContent = rounded + '%';
+    if(barFill) barFill.style.width = displayed + '%';
+    if(statusEl) statusEl.textContent = statusFor(rounded);
+
+    if(allSettled && rounded >= 99){
+      if(percentEl) percentEl.textContent = '100%';
+      if(barFill) barFill.style.width = '100%';
+      finish();
+      return;
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  function loadVideoAsset(asset){
+    return new Promise(function(resolve){
+      if(typeof XMLHttpRequest === 'undefined'){ asset.progress = 1; resolve(); return; }
+      var xhr = new XMLHttpRequest();
+      try{
+        xhr.open('GET', asset.url, true);
+      } catch(e){ asset.progress = 1; resolve(); return; }
+      xhr.responseType = 'blob';
+      xhr.onprogress = function(e){
+        asset.progress = e.lengthComputable
+          ? Math.min(0.99, e.loaded / e.total)
+          : Math.min(0.92, asset.progress + 0.04);
+      };
+      function settle(){
+        asset.progress = 1;
+        resolve();
+      }
+      xhr.onload = function(){
+        if((xhr.status === 200 || xhr.status === 0) && asset.target && xhr.response){
+          try{
+            asset.target.src = URL.createObjectURL(xhr.response);
+            asset.target.load();
+          } catch(e){ /* fall through — video keeps its poster */ }
+        }
+        settle();
+      };
+      xhr.onerror = settle;
+      xhr.ontimeout = settle;
+      xhr.timeout = 25000;
+      try{ xhr.send(); } catch(e){ settle(); }
+    });
+  }
+
+  function loadImageAsset(asset){
+    return new Promise(function(resolve){
+      var img = new Image();
+      img.onload = function(){ asset.progress = 1; resolve(); };
+      img.onerror = function(){ asset.progress = 1; resolve(); };
+      img.src = asset.url;
+    });
+  }
+
+  var loaders = assets.map(function(asset){
+    return asset.kind === 'video' ? loadVideoAsset(asset) : loadImageAsset(asset);
+  });
+
+  // Hard ceiling so a stalled request on a slow or blocked connection
+  // never traps someone on the splash screen indefinitely.
+  var safety = new Promise(function(resolve){ setTimeout(resolve, 20000); });
+
+  Promise.race([Promise.all(loaders), safety]).then(function(){
+    assets.forEach(function(a){ a.progress = 1; });
+    allSettled = true;
+  });
+
+  var finished = false;
+  function finish(){
+    if(finished) return;
+    finished = true;
+    splash.classList.add('is-hidden');
+    document.body.classList.remove('is-loading');
+
+    if(heroVideo){
+      var p = heroVideo.play();
+      if(p && p.catch) p.catch(function(){});
+    }
+
+    var removed = false;
+    function cleanup(){
+      if(removed) return;
+      removed = true;
+      if(splash.parentNode) splash.parentNode.removeChild(splash);
+    }
+    splash.addEventListener('transitionend', function handler(e){
+      if(e.target !== splash) return;
+      splash.removeEventListener('transitionend', handler);
+      cleanup();
+    });
+    // Belt-and-braces in case transitionend doesn't fire (e.g. tab backgrounded).
+    setTimeout(cleanup, 1200);
+  }
+})();
+
 document.getElementById('year').textContent = new Date().getFullYear();
 
 /* ============ REDUCED MOTION CHECK ============ */
@@ -178,7 +335,6 @@ revealTargets.forEach((el, i) => {
     if(durationResolved) return;
     resolveDuration();
   });
-  video.load();
   if(video.readyState >= 1){ resolveDuration(); }
 
   function lerp(a,b,t){ return a + (b - a) * t; }
