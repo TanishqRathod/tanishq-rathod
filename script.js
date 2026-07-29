@@ -138,6 +138,11 @@
       var p = heroVideo.play();
       if(p && p.catch) p.catch(function(){});
     }
+    // Signal that the hero video has actually begun (or attempted to begin)
+    // playing, so the reveal timer below can count from this moment rather
+    // than from page load — a slow splash preload would otherwise burn
+    // through a fixed page-load timer before the video ever starts.
+    document.dispatchEvent(new Event('hero-video-started'));
 
     var removed = false;
     function cleanup(){
@@ -160,14 +165,15 @@ document.getElementById('year').textContent = new Date().getFullYear();
 /* ============ REDUCED MOTION CHECK ============ */
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/* ============ HERO REVEAL AFTER 10s OF VIDEO ============ */
+/* ============ HERO REVEAL AFTER 10s OF HERO VIDEO PLAYBACK ============ */
 const video = document.getElementById('heroVideo');
 const heroEl = document.getElementById('hero');
 const heroContent = document.getElementById('heroContent');
 const nav = document.getElementById('siteNav');
 const skipBtn = document.getElementById('skipIntro');
-const REVEAL_AT = 10; // seconds
+const REVEAL_AT = 10; // seconds of ACTUAL hero video playback
 let revealed = false;
+let heroRevealArmed = false;
 
 function doReveal(){
   if (revealed) return;
@@ -190,22 +196,40 @@ function handleMediaError(videoEl, fallbackEl){
   }
 }
 
-if (prefersReducedMotion){
-  // Respect reduced motion: reveal immediately, no wait
-  doReveal();
-} else {
+/* Wires up the actual 10-second watch and its fallbacks. Only called once
+   the hero video has actually started playing — see the 'hero-video-started'
+   listener below — so REVEAL_AT is measured against real playback time,
+   not against however long the splash preloader happened to take. */
+function armHeroReveal(){
+  if (heroRevealArmed) return;
+  heroRevealArmed = true;
+
+  if (prefersReducedMotion){
+    // Respect reduced motion: reveal immediately, no wait
+    doReveal();
+    return;
+  }
+
   video.addEventListener('timeupdate', () => {
     if (video.currentTime >= REVEAL_AT) doReveal();
   });
-  // Fallback: if video fails to load/play, don't trap the user
+  // Fallback: if the video fails to load/play, don't trap the user
   video.addEventListener('error', () => {
     handleMediaError(video, heroEl);
     doReveal();
   });
-  setTimeout(() => { if (!revealed) doReveal(); }, 15000);
+  // Safety net in case timeupdate never fires (e.g. autoplay silently
+  // blocked) — counted from when playback was attempted, not from page load.
+  setTimeout(() => { if (!revealed) doReveal(); }, REVEAL_AT * 1000 + 5000);
 }
 
 skipBtn.addEventListener('click', doReveal);
+
+// The splash screen dispatches this the instant it hands off and calls
+// video.play() on the hero video. If there's no splash screen on the page
+// for some reason, arm immediately so the hero still reveals normally.
+document.addEventListener('hero-video-started', armHeroReveal);
+if (!document.getElementById('splash')) armHeroReveal();
 
 /* ============ NAV: scrolled state + mobile toggle ============ */
 const navToggle = document.getElementById('navToggle');
