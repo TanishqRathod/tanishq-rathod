@@ -770,6 +770,22 @@ skillCards.forEach(c => skillIO.observe(c));
 
   if (typeof THREE.GLTFLoader !== 'undefined'){
     const loader = new THREE.GLTFLoader();
+
+    // teresa.glb is Draco-compressed (common for GLTFs exported from Blender
+    // with compression on), so GLTFLoader needs a DRACOLoader wired in or it
+    // throws "No DRACOLoader instance provided" and never resolves the mesh.
+    // The decoder files themselves are fetched from Google's CDN rather than
+    // bundled locally — setDecoderConfig({type:'js'}) uses the plain-JS
+    // decoder so it doesn't need a separate .wasm MIME-type/CORS setup.
+    if (typeof THREE.DRACOLoader !== 'undefined'){
+      const dracoLoader = new THREE.DRACOLoader();
+      dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+      dracoLoader.setDecoderConfig({ type: 'js' });
+      loader.setDRACOLoader(dracoLoader);
+    } else {
+      console.warn('[model] THREE.DRACOLoader is not defined — if the .glb is Draco-compressed it will fail to parse.');
+    }
+
     loader.load(
       MODEL_URL,
       (gltf) => {
