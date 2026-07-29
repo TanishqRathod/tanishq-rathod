@@ -936,11 +936,44 @@ skillCards.forEach(c => skillIO.observe(c));
 })();
 
 /* ============ CONTACT FORM (front-end only) ============ */
+/* ============ CONTACT FORM (Firebase Firestore) ============ */
 const form = document.getElementById('contactForm');
 const formNote = document.getElementById('formNote');
-form.addEventListener('submit', (e) => {
+const submitBtn = form.querySelector('button[type="submit"]');
+
+form.addEventListener('submit', async (e) => {
   e.preventDefault();
+
   const name = form.name.value.trim();
-  formNote.textContent = `Thanks${name ? ', ' + name : ''} — this form is a template. Wire it up to Formspree, a mailto link, or your own backend to receive messages.`;
-  form.reset();
+  const email = form.email.value.trim();
+  const subject = form.subject.value.trim();
+  const message = form.message.value.trim();
+
+  if (!window.__firebase) {
+    formNote.textContent = 'Something went wrong connecting to the server. Please email me directly instead.';
+    return;
+  }
+
+  const { db, collection, addDoc, serverTimestamp } = window.__firebase;
+
+  submitBtn.disabled = true;
+  formNote.textContent = 'Sending…';
+
+  try {
+    await addDoc(collection(db, 'contactMessages'), {
+      name,
+      email,
+      subject,
+      message,
+      createdAt: serverTimestamp()
+    });
+
+    formNote.textContent = `Thanks${name ? ', ' + name : ''} — your message has been sent. I'll get back to you soon.`;
+    form.reset();
+  } catch (err) {
+    console.error('[contact form] Failed to submit:', err);
+    formNote.textContent = 'Something went wrong sending your message. Please try emailing me directly.';
+  } finally {
+    submitBtn.disabled = false;
+  }
 });
