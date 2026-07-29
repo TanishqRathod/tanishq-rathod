@@ -189,6 +189,16 @@
         <article class="project-card featured">
           <div class="project-visual pv-1" aria-hidden="true"><canvas class="mini-canvas" data-variant="net"></canvas></div>
           <div class="project-body">
+            <div class="project-tags"><span>Python</span><span>FastAPI</span><span>EasyOCR</span><span>OpenCV</span><span>Gemini AI</span><span>MySQL</span></div>
+            <h3>Smart Pantry AI</h3>
+            <p>Designed an intelligent pantry assistant that uses OCR and AI to digitize grocery items, automatically organize inventory, detect expiry dates, and generate personalized recipe suggestions, creating a smarter and more efficient kitchen experience.</p>
+            <a href="#" class="project-link">View case study →</a>
+          </div>
+        </article>
+
+        <article class="project-card">
+          <div class="project-visual pv-2" aria-hidden="true"><canvas class="mini-canvas" data-variant="wave"></canvas></div>
+          <div class="project-body">
             <div class="project-tags"><span>Python</span><span>TensorFlow</span><span>CNN</span><span>OpenCV</span><span>FastAPI</span></div>
             <h3>Potato Disease Detection using Deep Learning</h3>
             <p>Developed a deep learning solution that identifies potato leaf diseases from images, enabling faster and more accurate crop health assessment.</p>
@@ -197,7 +207,7 @@
         </article>
 
         <article class="project-card">
-          <div class="project-visual pv-2" aria-hidden="true"><canvas class="mini-canvas" data-variant="wave"></canvas></div>
+          <div class="project-visual pv-3" aria-hidden="true"><canvas class="mini-canvas" data-variant="grid"></canvas></div>
           <div class="project-body">
             <div class="project-tags"><span>Python</span><span>TensorFlow</span><span>ANN</span><span>Keras</span><span>Scikit-learn</span></div>
             <h3>Customer Churn Prediction</h3>
@@ -205,17 +215,7 @@
             <a href="#" class="project-link">View case study →</a>
           </div>
         </article>
-
-        <article class="project-card">
-          <div class="project-visual pv-3" aria-hidden="true"><canvas class="mini-canvas" data-variant="grid"></canvas></div>
-          <div class="project-body">
-            <div class="project-tags"><span>Computer Vision</span><span>PyTorch</span></div>
-            <h3>Defect Detection Model</h3>
-            <p>Vision model for identifying manufacturing defects from line images, deployed with a lightweight review UI for human-in-the-loop correction.</p>
-            <a href="#" class="project-link">View case study →</a>
-          </div>
-        </article>
-        <article class="project-card featured">
+        <!-- <article class="project-card featured">
           <div class="project-body">
             <div class="project-tags"><span>Python</span><span>TensorFlow</span><span>ANN</span><span>Keras</span><span>Scikit-learn</span></div>
             <h3>Customer Churn Prediction</h3>
@@ -223,7 +223,7 @@
             <a href="#" class="project-link">View case study →</a>
           </div>
           <div class="project-visual pv-4" aria-hidden="true"><canvas class="mini-canvas" data-variant="scatter"></canvas></div>
-        </article>
+        </article> -->
       </div>
     </div>
   </section>
@@ -368,6 +368,10 @@
             <input id="cf-email" name="email" type="email" required autocomplete="email">
           </div>
           <div class="field">
+            <label for="cf-subject">Subject</label>
+            <input id="cf-subject" name="subject" type="text" required>
+          </div>
+          <div class="field">
             <label for="cf-msg">Message</label>
             <textarea id="cf-msg" name="message" rows="4" required></textarea>
           </div>
@@ -376,15 +380,15 @@
         </form>
 
         <div class="contact-links">
-          <a href="mailto:developerastanishq@gmail.com" class="contact-link">
+          <a href="mailto:developerastanishq@gmail.com" class="contact-link" >
             <span class="cl-label">Email</span>
             <span class="cl-value">developerastanishq@gmail.com</span>
           </a>
-          <a href="https://linkedin.com/in/tanishqrathod/" class="contact-link">
+          <a href="https://linkedin.com/in/tanishqrathod/" class="contact-link" target="_blank" rel="noopener">
             <span class="cl-label">LinkedIn</span>
             <span class="cl-value">Connect →</span>
           </a>
-          <a href="https://github.com/TanishqRathod" class="contact-link">
+          <a href="https://github.com/TanishqRathod" class="contact-link" target="_blank" rel="noopener">
             <span class="cl-label">GitHub</span>
             <span class="cl-value">View Projects →</span>
           </a>
@@ -392,7 +396,7 @@
             <span class="cl-label">Resume</span>
             <span class="cl-value">Download PDF</span>
           </a>
-          <a href="https://maps.app.goo.gl/DddenQrjZnAVyVP39" class="contact-link">
+          <a href="https://maps.app.goo.gl/DddenQrjZnAVyVP39" class="contact-link" target="_blank" rel="noopener">
             <span class="cl-label">Location</span>
             <span class="cl-value">Ahmedabad, Gujarat</span>
           </a>
@@ -401,11 +405,53 @@
     </div>
   </section>
 
-  <footer class="footer">
+  <!-- FOOTER -->
+  <footer class="footer" id="siteFooter">
     <div class="wrap footer-inner">
-      <p class="footer-tagline">Let's build intelligent solutions together.</p>
-      <p class="footer-sub">Turning ideas into AI-powered reality.</p>
-      <p class="footer-bottom">© <span id="year"></span> Tanishq Rathod. All Rights Reserved.</p>
+      <div class="footer-grid">
+        <div class="footer-col footer-brand">
+          <p class="footer-logo">Tanishq Rathod</p>
+          <p class="footer-desc">Let's build intelligent solutions together.<br>Turning ideas into AI-powered reality.</p>
+          <br>
+          <div class="footer-social">
+            <a href="https://github.com/TanishqRathod" class="footer-social-link" aria-label="GitHub" target="_blank" rel="noopener">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.73.5.98 5.24.98 11.52c0 5.02 3.26 9.28 7.78 10.78.57.1.78-.25.78-.55 0-.27-.01-1.16-.02-2.11-3.17.69-3.84-1.34-3.84-1.34-.52-1.32-1.27-1.67-1.27-1.67-1.04-.71.08-.7.08-.7 1.15.08 1.75 1.18 1.75 1.18 1.02 1.74 2.67 1.24 3.32.95.1-.74.4-1.24.72-1.53-2.53-.29-5.19-1.27-5.19-5.63 0-1.24.44-2.26 1.17-3.06-.12-.29-.51-1.45.11-3.02 0 0 .96-.31 3.14 1.17a10.9 10.9 0 0 1 5.72 0c2.18-1.48 3.14-1.17 3.14-1.17.62 1.57.23 2.73.11 3.02.73.8 1.17 1.82 1.17 3.06 0 4.37-2.66 5.34-5.2 5.62.41.35.77 1.04.77 2.11 0 1.52-.01 2.75-.01 3.12 0 .3.2.66.79.55A11.53 11.53 0 0 0 23.02 11.5C23.02 5.24 18.27.5 12 .5Z"></path></svg>
+            </a>
+            <a href="https://linkedin.com/in/tanishqrathod/" class="footer-social-link" aria-label="LinkedIn" target="_blank" rel="noopener">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.02-3.04-1.85-3.04-1.86 0-2.14 1.45-2.14 2.94v5.67H9.34V9h3.42v1.56h.05c.48-.9 1.64-1.85 3.38-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28ZM5.34 7.43a2.07 2.07 0 1 1 0-4.13 2.07 2.07 0 0 1 0 4.13ZM7.12 20.45H3.56V9h3.56v11.45Z"></path></svg>
+            </a>
+            <a href="mailto:developerastanishq@gmail.com" class="footer-social-link" aria-label="Email">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4.5" width="19" height="15" rx="2"></rect><path d="m3 6 9 7 9-7"></path></svg>
+            </a>
+          </div>
+        </div>
+
+        <div class="footer-col">
+          <h4 class="footer-heading">Quick Links</h4>
+          <ul class="footer-links">
+            <li><a href="#about">About</a></li>
+            <li><a href="#projects">Projects</a></li>
+            <li><a href="#experience">Experience</a></li>
+            <li><a href="#contact">Contact</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h4 class="footer-heading">Services</h4>
+          <ul class="footer-links footer-services">
+            <li>Machine Learning Engineering</li>
+            <li>Data Science & Analytics</li>
+            <li>Model Development & Deployment</li>
+            <li>Computer Vision Solutions</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-divider"></div>
+
+      <div class="footer-bottom-row" style="justify-content:center;">
+        <p class="footer-copyright">© <span id="year"></span> Tanishq Rathod. All Rights Reserved.</p>
+      </div>
     </div>
   </footer>
 

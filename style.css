@@ -950,31 +950,106 @@ ul{ list-style:none; }
 }
 .cl-value{ font-size: 0.98rem; }
 
+/* ============ FOOTER ============ */
 .footer{
-  text-align:center;
-  padding: 60px 24px 44px;
+  padding: 64px 0 32px;
   border-top: 1px solid var(--line);
+  background: var(--bg-alt);
 }
-.footer-inner{
-  max-width: 560px;
+.footer-inner{ text-align: left; max-width: 1160px; }
+
+.footer-grid{
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: 40px;
+  padding-bottom: 40px;
 }
-.footer-tagline{
+
+.footer-logo{
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.15rem;
+  color: var(--violet);
+  margin-bottom: 14px;
+}
+
+.footer-desc{
+  color: var(--ink-dim);
+  font-size: 0.92rem;
+  max-width: 320px;
+  line-height: 1.6;
+}
+
+.footer-heading{
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 1.05rem;
+  font-size: 1rem;
   color: var(--ink);
-  margin-bottom: 6px;
+  margin-bottom: 16px;
 }
-.footer-sub{
-  font-size: 0.9rem;
+
+.footer-links{
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.footer-links a{
   color: var(--ink-dim);
-  margin-bottom: 22px;
+  font-size: 0.92rem;
+  transition: color .2s ease;
 }
-.footer-bottom{
+.footer-links a:hover{ color: var(--cyan); }
+
+.footer-social{
+  display: flex;
+  gap: 12px;
+}
+.footer-social-link{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink-dim);
+  transition: color .2s ease, border-color .2s ease, transform .2s ease;
+}
+.footer-social-link:hover{
+  color: var(--cyan);
+  border-color: var(--cyan);
+  transform: translateY(-2px);
+}
+
+.footer-divider{
+  height: 1px;
+  background: var(--line);
+}
+
+.footer-bottom-row{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 24px;
+}
+.footer-copyright,
+.footer-stack{
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: 0.76rem;
   letter-spacing: 0.03em;
   color: var(--ink-faint);
+}
+.footer-services li{
+  color: var(--ink-dim);
+  font-size: 0.92rem;
+}
+
+@media (max-width: 700px){
+  .footer-grid{ grid-template-columns: 1fr; gap: 32px; }
+  .footer-bottom-row{ flex-direction: column; align-items: flex-start; }
 }
 
 /* focus visibility */
