@@ -672,6 +672,24 @@ const skillIO = new IntersectionObserver((entries) => {
 skillCards.forEach(c => skillIO.observe(c));
 
 /* ============ 3D MODEL SECTION (GLTF viewer of my own model) ============ */
+/* FIXED: previously this whole block (renderer creation, GLTF/Draco
+   fetch+parse, renderer.compile) ran the instant the page loaded. If the
+   .glb finished downloading/parsing right as you scrolled into the model
+   section, all of that synchronous main-thread work landed on the active
+   scroll frame — which is what showed up as the page "freezing" for a
+   couple of seconds right around that section.
+
+   Two changes fix it:
+   1. The model fetch/parse is now lazy — it only starts once the section
+      is about to enter the viewport (IntersectionObserver), instead of
+      competing with the hero/about video downloads from the first paint.
+   2. The heavy one-time work (attaching the loaded mesh, renderer.compile)
+      is deferred to requestIdleCallback (falls back to setTimeout), so it
+      runs after the browser finishes whatever scroll frame is in flight
+      instead of blocking it.
+   The render loop is also now gated by visibility, same pattern as the
+   project mini-canvases above, so it isn't spending frame budget while
+   the section is off-screen in either direction. */
 (function initModel(){
   const stage = document.querySelector('.model-stage');
   const canvas = document.getElementById('modelCanvas');
@@ -681,10 +699,6 @@ skillCards.forEach(c => skillIO.observe(c));
   const MODEL_URL = 'assets/models/teresa.glb';
   const TARGET_RADIUS = 2.4;
 
-  // Loud, visible diagnostics: file:// pages can't fetch local binary
-  // assets (CORS blocks it), so GLTFLoader will always fail there. Detect
-  // that case specifically and say so, rather than quietly falling back
-  // to a placeholder that looks like "nothing changed."
   if (location.protocol === 'file:'){
     console.warn(
       '[model] Page is running from file:// — browsers block fetch() of local ' +
@@ -692,6 +706,11 @@ skillCards.forEach(c => skillIO.observe(c));
       'Serve this folder over http(s):// instead, e.g. `python3 -m http.server` ' +
       'or VS Code\'s Live Server extension, then reload.'
     );
+  }
+
+  function idle(fn){
+    if ('requestIdleCallback' in window) requestIdleCallback(fn, { timeout: 500 });
+    else setTimeout(fn, 0);
   }
 
   const scene = new THREE.Scene();
@@ -716,9 +735,6 @@ skillCards.forEach(c => skillIO.observe(c));
   const group = new THREE.Group();
   scene.add(group);
 
-  // References to fallback-only pieces so animate() can give them their
-  // own independent motion (counter-rotation, glow pulse) on top of the
-  // regular drag/idle rotation applied to the whole group.
   let fallbackInner = null;
   let fallbackGlow = null;
   let fallbackParticles = null;
@@ -739,9 +755,6 @@ skillCards.forEach(c => skillIO.observe(c));
     if (loadingEl) loadingEl.classList.add('is-hidden');
   }
 
-  // Small radial-gradient sprite texture used for the ambient glow behind
-  // the fallback wireframes. Generated on a canvas rather than fetched, so
-  // it works even when nothing else on the page can load.
   function createGlowTexture(hex){
     const size = 256;
     const c = document.createElement('canvas');
@@ -757,15 +770,11 @@ skillCards.forEach(c => skillIO.observe(c));
   }
 
   function showFallbackParticles(reasonText){
-    // No on-screen error text — this visual is the failure state, and the
-    // reason is logged to the console for debugging instead of shown over
-    // the stage.
     hideLoading();
     if (reasonText) console.warn('[model] ' + reasonText);
 
     const fallbackGroup = new THREE.Group();
 
-    // Soft ambient glow behind everything, in deep blue.
     const glowTex = createGlowTexture('#3b5bfd');
     const glowMat = new THREE.SpriteMaterial({
       map: glowTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
@@ -775,15 +784,12 @@ skillCards.forEach(c => skillIO.observe(c));
     fallbackGroup.add(glowSprite);
     fallbackGlow = glowSprite;
 
-    // Outer wireframe shell — brighter royal blue.
     const outerGeo = new THREE.IcosahedronGeometry(TARGET_RADIUS * 0.95, 1);
     const outerMat = new THREE.MeshBasicMaterial({
       color: 0x3b5bfd, wireframe: true, transparent: true, opacity: 0.55
     });
     fallbackGroup.add(new THREE.Mesh(outerGeo, outerMat));
 
-    // Inner wireframe shell — darker indigo, counter-rotates for a bit of
-    // parallax depth instead of sitting static inside the outer one.
     const innerGeo = new THREE.IcosahedronGeometry(TARGET_RADIUS * 0.55, 2);
     const innerMat = new THREE.MeshBasicMaterial({
       color: 0x1e3a8a, wireframe: true, transparent: true, opacity: 0.45
@@ -792,7 +798,6 @@ skillCards.forEach(c => skillIO.observe(c));
     fallbackGroup.add(innerMesh);
     fallbackInner = innerMesh;
 
-    // A thin shell of glowing points scattered just outside the wireframes.
     const PARTICLE_COUNT = 160;
     const positions = new Float32Array(PARTICLE_COUNT * 3);
     for (let i = 0; i < PARTICLE_COUNT; i++){
@@ -815,60 +820,86 @@ skillCards.forEach(c => skillIO.observe(c));
 
     group.add(fallbackGroup);
 
-    // Same reasoning as the successful-load path below: pay the one-time
-    // shader-compile cost right now, off the scroll/interaction path,
-    // instead of on whatever frame happens to render this first.
-    renderer.compile(scene, camera);
+    // Deferred so the fallback build never lands on a live scroll frame.
+    idle(() => renderer.compile(scene, camera));
   }
 
-  if (typeof THREE.GLTFLoader !== 'undefined'){
-    const loader = new THREE.GLTFLoader();
+  let modelLoadStarted = false;
+  function startModelLoad(){
+    if (modelLoadStarted) return;
+    modelLoadStarted = true;
 
-    // teresa.glb is Draco-compressed (common for GLTFs exported from Blender
-    // with compression on), so GLTFLoader needs a DRACOLoader wired in or it
-    // throws "No DRACOLoader instance provided" and never resolves the mesh.
-    // The decoder files themselves are fetched from Google's CDN rather than
-    // bundled locally — setDecoderConfig({type:'js'}) uses the plain-JS
-    // decoder so it doesn't need a separate .wasm MIME-type/CORS setup.
-    if (typeof THREE.DRACOLoader !== 'undefined'){
-      const dracoLoader = new THREE.DRACOLoader();
-      dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
-      dracoLoader.setDecoderConfig({ type: 'js' });
-      loader.setDRACOLoader(dracoLoader);
-    } else {
-      console.warn('[model] THREE.DRACOLoader is not defined — if the .glb is Draco-compressed it will fail to parse.');
-    }
+    if (typeof THREE.GLTFLoader !== 'undefined'){
+      const loader = new THREE.GLTFLoader();
 
-    loader.load(
-      MODEL_URL,
-      (gltf) => {
-        frameObject(gltf.scene);
-        group.add(gltf.scene);
-        // Shader compilation is a synchronous, blocking step that Three.js
-        // otherwise defers to the first actual render() call. Doing it here
-        // — right when the asset finishes loading — means that cost lands
-        // once, predictably, instead of stalling whatever scroll or drag
-        // frame happens to be the first one to render the new mesh.
-        renderer.compile(scene, camera);
-        hideLoading();
-        console.log('[model] Loaded successfully from', MODEL_URL);
-      },
-      (xhr) => {
-        if (xhr.total){
-          console.log('[model] Loading', Math.round((xhr.loaded / xhr.total) * 100) + '%');
-        }
-      },
-      (err) => {
-        console.error('[model] Failed to load ' + MODEL_URL + ':', err);
-        const reason = location.protocol === 'file:'
-          ? 'Model failed: page is running over file:// — start a local server'
-          : 'Model failed to load — check the file path and console';
-        showFallbackParticles(reason);
+      // teresa.glb is Draco-compressed, so GLTFLoader needs a DRACOLoader
+      // wired in or it throws "No DRACOLoader instance provided". The
+      // decoder files are fetched from Google's CDN rather than bundled
+      // locally — setDecoderConfig({type:'js'}) uses the plain-JS decoder
+      // so it doesn't need a separate .wasm MIME-type/CORS setup.
+      if (typeof THREE.DRACOLoader !== 'undefined'){
+        const dracoLoader = new THREE.DRACOLoader();
+        dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+        dracoLoader.setDecoderConfig({ type: 'js' });
+        loader.setDRACOLoader(dracoLoader);
+      } else {
+        console.warn('[model] THREE.DRACOLoader is not defined — if the .glb is Draco-compressed it will fail to parse.');
       }
-    );
+
+      loader.load(
+        MODEL_URL,
+        (gltf) => {
+          // Attaching the loaded mesh (frameObject + adding potentially
+          // many sub-meshes to the scene graph) and compiling shaders are
+          // both synchronous, blocking steps. Running them on an idle
+          // callback — rather than inline, right when the network request
+          // happens to resolve — is what stops this from freezing whatever
+          // scroll frame is active at that exact moment.
+          idle(() => {
+            frameObject(gltf.scene);
+            group.add(gltf.scene);
+            renderer.compile(scene, camera);
+            hideLoading();
+            console.log('[model] Loaded successfully from', MODEL_URL);
+          });
+        },
+        (xhr) => {
+          if (xhr.total){
+            console.log('[model] Loading', Math.round((xhr.loaded / xhr.total) * 100) + '%');
+          }
+        },
+        (err) => {
+          console.error('[model] Failed to load ' + MODEL_URL + ':', err);
+          const reason = location.protocol === 'file:'
+            ? 'Model failed: page is running over file:// — start a local server'
+            : 'Model failed to load — check the file path and console';
+          showFallbackParticles(reason);
+        }
+      );
+    } else {
+      console.error('[model] THREE.GLTFLoader is not defined — the loader <script> tag likely failed to load (check network tab / ad blockers / CDN availability).');
+      showFallbackParticles('GLTFLoader script did not load — check console');
+    }
+  }
+
+  // Only fetch/parse/compile the model once the section is actually about
+  // to come into view, instead of the moment the page loads. This keeps
+  // the .glb request from competing with the hero/about video downloads
+  // for bandwidth, and — combined with the idle-callback scheduling above
+  // — means the one-time heavy work no longer lands on whatever scroll
+  // frame happens to be running when it finishes.
+  if ('IntersectionObserver' in window){
+    const loadIO = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting){
+          startModelLoad();
+          loadIO.disconnect();
+        }
+      });
+    }, { rootMargin: '600px 0px' });
+    loadIO.observe(stage);
   } else {
-    console.error('[model] THREE.GLTFLoader is not defined — the loader <script> tag likely failed to load (check network tab / ad blockers / CDN availability).');
-    showFallbackParticles('GLTFLoader script did not load — check console');
+    startModelLoad();
   }
 
   let dragging = false, lastX = 0, lastY = 0;
@@ -896,7 +927,15 @@ skillCards.forEach(c => skillIO.observe(c));
     camera.position.z = Math.min(12, Math.max(2.5, camera.position.z + delta));
   }, { passive: false });
 
+  // The render loop only runs while the stage is actually on screen
+  // (mirrors the mini-canvas pattern above), so it isn't competing for
+  // frame budget with scrolling while the section is off-screen.
+  let rafId = null;
+  let stageVisible = false;
+
   function animate(){
+    if (!stageVisible){ rafId = null; return; }
+
     if (!dragging){
       velY += (0.0012 - velY) * 0.02;
       velX += (0 - velX) * 0.02;
@@ -921,21 +960,42 @@ skillCards.forEach(c => skillIO.observe(c));
     }
 
     renderer.render(scene, camera);
-    if (!prefersReducedMotion) requestAnimationFrame(animate);
+    if (!prefersReducedMotion) rafId = requestAnimationFrame(animate);
+    else rafId = null;
   }
-  animate();
-  if (prefersReducedMotion) renderer.render(scene, camera);
+
+  function startLoop(){
+    if (rafId == null){
+      rafId = requestAnimationFrame(animate);
+    }
+  }
+
+  if ('IntersectionObserver' in window){
+    const renderIO = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        stageVisible = entry.isIntersecting;
+        if (stageVisible){
+          renderer.render(scene, camera); // paint immediately, don't wait a frame
+          startLoop();
+        }
+      });
+    }, { rootMargin: '200px 0px' });
+    renderIO.observe(stage);
+  } else {
+    stageVisible = true;
+    startLoop();
+  }
 
   function handleResize(){
     const w = stage.clientWidth, h = stage.clientHeight;
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.setSize(w, h);
+    if (stageVisible) renderer.render(scene, camera);
   }
   window.addEventListener('resize', handleResize);
 })();
 
-/* ============ CONTACT FORM (front-end only) ============ */
 /* ============ CONTACT FORM (Firebase Firestore) ============ */
 const form = document.getElementById('contactForm');
 const formNote = document.getElementById('formNote');
