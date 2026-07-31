@@ -165,6 +165,18 @@ document.getElementById('year').textContent = new Date().getFullYear();
 /* ============ REDUCED MOTION CHECK ============ */
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+/* Small helper: run fn when the browser has spare main-thread time,
+   instead of synchronously in whatever callback triggered it (a network
+   response, an IntersectionObserver firing mid-scroll, etc). Falls back
+   to a plain timeout on browsers without requestIdleCallback (Safari). */
+function runWhenIdle(fn, timeout){
+  if('requestIdleCallback' in window){
+    window.requestIdleCallback(fn, { timeout: timeout || 500 });
+  } else {
+    setTimeout(fn, 0);
+  }
+}
+
 /* ============ HERO REVEAL AFTER 10s OF HERO VIDEO PLAYBACK ============ */
 const video = document.getElementById('heroVideo');
 const heroEl = document.getElementById('hero');
@@ -433,6 +445,16 @@ revealTargets.forEach((el, i) => {
     return false;
   }
 
+  // IMPORTANT: also gate the scrub effect so it fully stops updating
+  // (rather than just skipping a seek) once we're past the point where
+  // the About/Experience travel animation actually matters. Without
+  // this, every scroll event all the way down the page — including
+  // right as you reach the Model section — still runs measure()-derived
+  // math and DOM writes on `media` for no visual benefit, which just
+  // adds unnecessary main-thread work exactly while other heavier
+  // things (the 3D viewer) may be spinning up nearby.
+  var scrubFinished = false;
+
   function seekTo(t){
     if(video.readyState < 1) return;
     if(!isFinite(t)) return;
@@ -465,7 +487,7 @@ revealTargets.forEach((el, i) => {
   }
 
   function update(){
-    if(!travelActive){ return; }
+    if(!travelActive || scrubFinished){ return; }
 
     var SCRUB_SPEED = 1.4;
     var scrollY = window.scrollY || window.pageYOffset;
@@ -507,17 +529,21 @@ revealTargets.forEach((el, i) => {
 
     if(reduceMotion){
       seekTo(progress < 1 ? 0 : Math.max(videoDuration - 0.05, 0));
-      return;
-    }
-
-    if(videoDuration > 0){
+    } else if(videoDuration > 0){
       var t = progress * videoDuration;
       seekTo(Math.min(t, videoDuration - 0.03));
+    }
+
+    // Once the travel animation has fully finished (progress hit 1 and
+    // we've moved on), stop doing this work on every future scroll event.
+    if(progress >= 1){
+      scrubFinished = true;
     }
   }
 
   function syncMode(){
     if(desktopQuery.matches){
+      scrubFinished = false;
       enableTravel();
       update();
     } else {
@@ -672,267 +698,330 @@ const skillIO = new IntersectionObserver((entries) => {
 skillCards.forEach(c => skillIO.observe(c));
 
 /* ============ 3D MODEL SECTION (GLTF viewer of my own model) ============ */
-(function initModel(){
+/*
+  FIX for the "scroll freezes right before Model section" bug:
+
+  Previously this whole block ran immediately on page load. The model +
+  Draco decoder are fetched over the network, and whenever that fetch
+  happened to finish, the success callback did geometry setup PLUS a
+  synchronous renderer.compile() call (a real, blocking shader compile)
+  in one go. On a typical connection that fetch tends to finish right
+  around the time someone has scrolled this far down the page — so the
+  blocking compile step landed in the middle of an active scroll gesture,
+  which is exactly what shows up as the page "freezing" for a second or two.
+
+  Two changes fix this:
+   1. Lazy-start: the model doesn't even begin loading until the Model
+      section is getting close (IntersectionObserver with a large
+      rootMargin gives it a head start before you actually reach it).
+   2. Idle-deferred compile: the actual renderer.compile() call (in both
+      the success path and the fallback path) is wrapped in
+      runWhenIdle(), so it only ever runs when the browser has spare
+      main-thread time — never synchronously inside a network callback
+      that could otherwise land mid-scroll.
+*/
+(function initModelWhenNear(){
   const stage = document.querySelector('.model-stage');
-  const canvas = document.getElementById('modelCanvas');
-  const loadingEl = document.getElementById('modelLoading');
-  if (!stage || !canvas || typeof THREE === 'undefined') return;
+  if (!stage) return;
 
-  const MODEL_URL = 'assets/models/teresa.glb';
-  const TARGET_RADIUS = 2.4;
+  let started = false;
 
-  // Loud, visible diagnostics: file:// pages can't fetch local binary
-  // assets (CORS blocks it), so GLTFLoader will always fail there. Detect
-  // that case specifically and say so, rather than quietly falling back
-  // to a placeholder that looks like "nothing changed."
-  if (location.protocol === 'file:'){
-    console.warn(
-      '[model] Page is running from file:// — browsers block fetch() of local ' +
-      'binary files like .glb under this protocol, so the model cannot load. ' +
-      'Serve this folder over http(s):// instead, e.g. `python3 -m http.server` ' +
-      'or VS Code\'s Live Server extension, then reload.'
-    );
+  function start(){
+    if (started) return;
+    started = true;
+    initModel();
   }
 
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(45, stage.clientWidth / stage.clientHeight, 0.05, 100);
-  camera.position.set(0, 0, 6.5);
-
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  renderer.setSize(stage.clientWidth, stage.clientHeight);
-  if (renderer.outputEncoding !== undefined && THREE.sRGBEncoding !== undefined){
-    renderer.outputEncoding = THREE.sRGBEncoding;
-  }
-
-  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-  const key = new THREE.DirectionalLight(0xffffff, 1.1);
-  key.position.set(3, 4, 5);
-  scene.add(key);
-  const rim = new THREE.DirectionalLight(0x8b7cf6, 0.6);
-  rim.position.set(-4, -2, -3);
-  scene.add(rim);
-
-  const group = new THREE.Group();
-  scene.add(group);
-
-  // References to fallback-only pieces so animate() can give them their
-  // own independent motion (counter-rotation, glow pulse) on top of the
-  // regular drag/idle rotation applied to the whole group.
-  let fallbackInner = null;
-  let fallbackGlow = null;
-  let fallbackParticles = null;
-
-  function frameObject(object){
-    const box = new THREE.Box3().setFromObject(object);
-    const size = new THREE.Vector3();
-    const center = new THREE.Vector3();
-    box.getSize(size);
-    box.getCenter(center);
-    object.position.sub(center);
-    const maxDim = Math.max(size.x, size.y, size.z) || 1;
-    const scale = (TARGET_RADIUS * 2) / maxDim;
-    object.scale.setScalar(scale);
-  }
-
-  function hideLoading(){
-    if (loadingEl) loadingEl.classList.add('is-hidden');
-  }
-
-  // Small radial-gradient sprite texture used for the ambient glow behind
-  // the fallback wireframes. Generated on a canvas rather than fetched, so
-  // it works even when nothing else on the page can load.
-  function createGlowTexture(hex){
-    const size = 256;
-    const c = document.createElement('canvas');
-    c.width = size; c.height = size;
-    const ctx = c.getContext('2d');
-    const grad = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
-    grad.addColorStop(0, hex + 'e6');
-    grad.addColorStop(0.45, hex + '40');
-    grad.addColorStop(1, hex + '00');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, size, size);
-    return new THREE.CanvasTexture(c);
-  }
-
-  function showFallbackParticles(reasonText){
-    // No on-screen error text — this visual is the failure state, and the
-    // reason is logged to the console for debugging instead of shown over
-    // the stage.
-    hideLoading();
-    if (reasonText) console.warn('[model] ' + reasonText);
-
-    const fallbackGroup = new THREE.Group();
-
-    // Soft ambient glow behind everything, in deep blue.
-    const glowTex = createGlowTexture('#3b5bfd');
-    const glowMat = new THREE.SpriteMaterial({
-      map: glowTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
-    });
-    const glowSprite = new THREE.Sprite(glowMat);
-    glowSprite.scale.set(TARGET_RADIUS * 3.4, TARGET_RADIUS * 3.4, 1);
-    fallbackGroup.add(glowSprite);
-    fallbackGlow = glowSprite;
-
-    // Outer wireframe shell — brighter royal blue.
-    const outerGeo = new THREE.IcosahedronGeometry(TARGET_RADIUS * 0.95, 1);
-    const outerMat = new THREE.MeshBasicMaterial({
-      color: 0x3b5bfd, wireframe: true, transparent: true, opacity: 0.55
-    });
-    fallbackGroup.add(new THREE.Mesh(outerGeo, outerMat));
-
-    // Inner wireframe shell — darker indigo, counter-rotates for a bit of
-    // parallax depth instead of sitting static inside the outer one.
-    const innerGeo = new THREE.IcosahedronGeometry(TARGET_RADIUS * 0.55, 2);
-    const innerMat = new THREE.MeshBasicMaterial({
-      color: 0x1e3a8a, wireframe: true, transparent: true, opacity: 0.45
-    });
-    const innerMesh = new THREE.Mesh(innerGeo, innerMat);
-    fallbackGroup.add(innerMesh);
-    fallbackInner = innerMesh;
-
-    // A thin shell of glowing points scattered just outside the wireframes.
-    const PARTICLE_COUNT = 160;
-    const positions = new Float32Array(PARTICLE_COUNT * 3);
-    for (let i = 0; i < PARTICLE_COUNT; i++){
-      const phi = Math.acos(-1 + (2 * i) / PARTICLE_COUNT);
-      const theta = Math.sqrt(PARTICLE_COUNT * Math.PI) * phi;
-      const r = TARGET_RADIUS * (0.92 + Math.random() * 0.18);
-      positions[i * 3] = r * Math.cos(theta) * Math.sin(phi);
-      positions[i * 3 + 1] = r * Math.sin(theta) * Math.sin(phi);
-      positions[i * 3 + 2] = r * Math.cos(phi);
-    }
-    const particleGeo = new THREE.BufferGeometry();
-    particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    const particleMat = new THREE.PointsMaterial({
-      color: 0x6d8bff, size: 0.045, transparent: true, opacity: 0.9,
-      blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true
-    });
-    const particlePoints = new THREE.Points(particleGeo, particleMat);
-    fallbackGroup.add(particlePoints);
-    fallbackParticles = particlePoints;
-
-    group.add(fallbackGroup);
-
-    // Same reasoning as the successful-load path below: pay the one-time
-    // shader-compile cost right now, off the scroll/interaction path,
-    // instead of on whatever frame happens to render this first.
-    renderer.compile(scene, camera);
-  }
-
-  if (typeof THREE.GLTFLoader !== 'undefined'){
-    const loader = new THREE.GLTFLoader();
-
-    // teresa.glb is Draco-compressed (common for GLTFs exported from Blender
-    // with compression on), so GLTFLoader needs a DRACOLoader wired in or it
-    // throws "No DRACOLoader instance provided" and never resolves the mesh.
-    // The decoder files themselves are fetched from Google's CDN rather than
-    // bundled locally — setDecoderConfig({type:'js'}) uses the plain-JS
-    // decoder so it doesn't need a separate .wasm MIME-type/CORS setup.
-    if (typeof THREE.DRACOLoader !== 'undefined'){
-      const dracoLoader = new THREE.DRACOLoader();
-      dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
-      dracoLoader.setDecoderConfig({ type: 'js' });
-      loader.setDRACOLoader(dracoLoader);
-    } else {
-      console.warn('[model] THREE.DRACOLoader is not defined — if the .glb is Draco-compressed it will fail to parse.');
-    }
-
-    loader.load(
-      MODEL_URL,
-      (gltf) => {
-        frameObject(gltf.scene);
-        group.add(gltf.scene);
-        // Shader compilation is a synchronous, blocking step that Three.js
-        // otherwise defers to the first actual render() call. Doing it here
-        // — right when the asset finishes loading — means that cost lands
-        // once, predictably, instead of stalling whatever scroll or drag
-        // frame happens to be the first one to render the new mesh.
-        renderer.compile(scene, camera);
-        hideLoading();
-        console.log('[model] Loaded successfully from', MODEL_URL);
-      },
-      (xhr) => {
-        if (xhr.total){
-          console.log('[model] Loading', Math.round((xhr.loaded / xhr.total) * 100) + '%');
+  if (typeof IntersectionObserver !== 'undefined'){
+    const preloadObs = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting){
+          preloadObs.disconnect();
+          start();
         }
-      },
-      (err) => {
-        console.error('[model] Failed to load ' + MODEL_URL + ':', err);
-        const reason = location.protocol === 'file:'
-          ? 'Model failed: page is running over file:// — start a local server'
-          : 'Model failed to load — check the file path and console';
-        showFallbackParticles(reason);
-      }
-    );
+      });
+    }, { rootMargin: '600px 0px 600px 0px' }); // start loading well before it's on screen
+    preloadObs.observe(stage);
   } else {
-    console.error('[model] THREE.GLTFLoader is not defined — the loader <script> tag likely failed to load (check network tab / ad blockers / CDN availability).');
-    showFallbackParticles('GLTFLoader script did not load — check console');
+    start();
   }
 
-  let dragging = false, lastX = 0, lastY = 0;
-  let rotX = 0.1, rotY = 0.3, velX = 0, velY = 0.0012;
+  function initModel(){
+    const canvas = document.getElementById('modelCanvas');
+    const loadingEl = document.getElementById('modelLoading');
+    if (!canvas || typeof THREE === 'undefined') return;
 
-  function pointerDown(x, y){ dragging = true; lastX = x; lastY = y; }
-  function pointerMove(x, y){
-    if (!dragging) return;
-    velY = (x - lastX) * 0.0006;
-    velX = (y - lastY) * 0.0006;
-    lastX = x; lastY = y;
-  }
-  function pointerUp(){ dragging = false; }
+    const MODEL_URL = 'assets/models/teresa.glb';
+    const TARGET_RADIUS = 2.4;
 
-  canvas.addEventListener('mousedown', e => pointerDown(e.clientX, e.clientY));
-  window.addEventListener('mousemove', e => pointerMove(e.clientX, e.clientY));
-  window.addEventListener('mouseup', pointerUp);
-  canvas.addEventListener('touchstart', e => { const t = e.touches[0]; pointerDown(t.clientX, t.clientY); }, { passive: true });
-  canvas.addEventListener('touchmove', e => { const t = e.touches[0]; pointerMove(t.clientX, t.clientY); }, { passive: true });
-  canvas.addEventListener('touchend', pointerUp);
+    // Loud, visible diagnostics: file:// pages can't fetch local binary
+    // assets (CORS blocks it), so GLTFLoader will always fail there. Detect
+    // that case specifically and say so, rather than quietly falling back
+    // to a placeholder that looks like "nothing changed."
+    if (location.protocol === 'file:'){
+      console.warn(
+        '[model] Page is running from file:// — browsers block fetch() of local ' +
+        'binary files like .glb under this protocol, so the model cannot load. ' +
+        'Serve this folder over http(s):// instead, e.g. `python3 -m http.server` ' +
+        'or VS Code\'s Live Server extension, then reload.'
+      );
+    }
 
-  canvas.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    const delta = e.deltaY * 0.0025;
-    camera.position.z = Math.min(12, Math.max(2.5, camera.position.z + delta));
-  }, { passive: false });
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, stage.clientWidth / stage.clientHeight, 0.05, 100);
+    camera.position.set(0, 0, 6.5);
 
-  function animate(){
-    if (!dragging){
-      velY += (0.0012 - velY) * 0.02;
-      velX += (0 - velX) * 0.02;
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(stage.clientWidth, stage.clientHeight);
+    if (renderer.outputEncoding !== undefined && THREE.sRGBEncoding !== undefined){
+      renderer.outputEncoding = THREE.sRGBEncoding;
+    }
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+    const key = new THREE.DirectionalLight(0xffffff, 1.1);
+    key.position.set(3, 4, 5);
+    scene.add(key);
+    const rim = new THREE.DirectionalLight(0x8b7cf6, 0.6);
+    rim.position.set(-4, -2, -3);
+    scene.add(rim);
+
+    const group = new THREE.Group();
+    scene.add(group);
+
+    // References to fallback-only pieces so animate() can give them their
+    // own independent motion (counter-rotation, glow pulse) on top of the
+    // regular drag/idle rotation applied to the whole group.
+    let fallbackInner = null;
+    let fallbackGlow = null;
+    let fallbackParticles = null;
+
+    function frameObject(object){
+      const box = new THREE.Box3().setFromObject(object);
+      const size = new THREE.Vector3();
+      const center = new THREE.Vector3();
+      box.getSize(size);
+      box.getCenter(center);
+      object.position.sub(center);
+      const maxDim = Math.max(size.x, size.y, size.z) || 1;
+      const scale = (TARGET_RADIUS * 2) / maxDim;
+      object.scale.setScalar(scale);
+    }
+
+    function hideLoading(){
+      if (loadingEl) loadingEl.classList.add('is-hidden');
+    }
+
+    // Small radial-gradient sprite texture used for the ambient glow behind
+    // the fallback wireframes. Generated on a canvas rather than fetched, so
+    // it works even when nothing else on the page can load.
+    function createGlowTexture(hex){
+      const size = 256;
+      const c = document.createElement('canvas');
+      c.width = size; c.height = size;
+      const ctx = c.getContext('2d');
+      const grad = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
+      grad.addColorStop(0, hex + 'e6');
+      grad.addColorStop(0.45, hex + '40');
+      grad.addColorStop(1, hex + '00');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, size, size);
+      return new THREE.CanvasTexture(c);
+    }
+
+    function showFallbackParticles(reasonText){
+      // No on-screen error text — this visual is the failure state, and the
+      // reason is logged to the console for debugging instead of shown over
+      // the stage.
+      hideLoading();
+      if (reasonText) console.warn('[model] ' + reasonText);
+
+      const fallbackGroup = new THREE.Group();
+
+      // Soft ambient glow behind everything, in deep blue.
+      const glowTex = createGlowTexture('#3b5bfd');
+      const glowMat = new THREE.SpriteMaterial({
+        map: glowTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+      });
+      const glowSprite = new THREE.Sprite(glowMat);
+      glowSprite.scale.set(TARGET_RADIUS * 3.4, TARGET_RADIUS * 3.4, 1);
+      fallbackGroup.add(glowSprite);
+      fallbackGlow = glowSprite;
+
+      // Outer wireframe shell — brighter royal blue.
+      const outerGeo = new THREE.IcosahedronGeometry(TARGET_RADIUS * 0.95, 1);
+      const outerMat = new THREE.MeshBasicMaterial({
+        color: 0x3b5bfd, wireframe: true, transparent: true, opacity: 0.55
+      });
+      fallbackGroup.add(new THREE.Mesh(outerGeo, outerMat));
+
+      // Inner wireframe shell — darker indigo, counter-rotates for a bit of
+      // parallax depth instead of sitting static inside the outer one.
+      const innerGeo = new THREE.IcosahedronGeometry(TARGET_RADIUS * 0.55, 2);
+      const innerMat = new THREE.MeshBasicMaterial({
+        color: 0x1e3a8a, wireframe: true, transparent: true, opacity: 0.45
+      });
+      const innerMesh = new THREE.Mesh(innerGeo, innerMat);
+      fallbackGroup.add(innerMesh);
+      fallbackInner = innerMesh;
+
+      // A thin shell of glowing points scattered just outside the wireframes.
+      const PARTICLE_COUNT = 160;
+      const positions = new Float32Array(PARTICLE_COUNT * 3);
+      for (let i = 0; i < PARTICLE_COUNT; i++){
+        const phi = Math.acos(-1 + (2 * i) / PARTICLE_COUNT);
+        const theta = Math.sqrt(PARTICLE_COUNT * Math.PI) * phi;
+        const r = TARGET_RADIUS * (0.92 + Math.random() * 0.18);
+        positions[i * 3] = r * Math.cos(theta) * Math.sin(phi);
+        positions[i * 3 + 1] = r * Math.sin(theta) * Math.sin(phi);
+        positions[i * 3 + 2] = r * Math.cos(phi);
+      }
+      const particleGeo = new THREE.BufferGeometry();
+      particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      const particleMat = new THREE.PointsMaterial({
+        color: 0x6d8bff, size: 0.045, transparent: true, opacity: 0.9,
+        blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true
+      });
+      const particlePoints = new THREE.Points(particleGeo, particleMat);
+      fallbackGroup.add(particlePoints);
+      fallbackParticles = particlePoints;
+
+      group.add(fallbackGroup);
+
+      // FIX: defer the compile instead of doing it synchronously right here.
+      // This callback can fire mid-scroll; runWhenIdle() waits for the
+      // browser to have spare main-thread time before paying that cost.
+      runWhenIdle(() => renderer.compile(scene, camera));
+    }
+
+    if (typeof THREE.GLTFLoader !== 'undefined'){
+      const loader = new THREE.GLTFLoader();
+
+      // teresa.glb is Draco-compressed (common for GLTFs exported from Blender
+      // with compression on), so GLTFLoader needs a DRACOLoader wired in or it
+      // throws "No DRACOLoader instance provided" and never resolves the mesh.
+      // The decoder files themselves are fetched from Google's CDN rather than
+      // bundled locally — setDecoderConfig({type:'js'}) uses the plain-JS
+      // decoder so it doesn't need a separate .wasm MIME-type/CORS setup.
+      if (typeof THREE.DRACOLoader !== 'undefined'){
+        const dracoLoader = new THREE.DRACOLoader();
+        dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+        dracoLoader.setDecoderConfig({ type: 'js' });
+        loader.setDRACOLoader(dracoLoader);
+      } else {
+        console.warn('[model] THREE.DRACOLoader is not defined — if the .glb is Draco-compressed it will fail to parse.');
+      }
+
+      loader.load(
+        MODEL_URL,
+        (gltf) => {
+          // FIX: geometry setup + the compile call both get pushed off the
+          // network-callback tick and onto an idle slice, so loading the
+          // model can never itself cause a visible scroll hitch.
+          runWhenIdle(() => {
+            frameObject(gltf.scene);
+            group.add(gltf.scene);
+            // Shader compilation is a synchronous, blocking step that Three.js
+            // otherwise defers to the first actual render() call. Doing it
+            // here, on idle time, means that cost lands once, predictably,
+            // and never overlaps with an active scroll frame.
+            renderer.compile(scene, camera);
+            hideLoading();
+            console.log('[model] Loaded successfully from', MODEL_URL);
+          });
+        },
+        (xhr) => {
+          if (xhr.total){
+            console.log('[model] Loading', Math.round((xhr.loaded / xhr.total) * 100) + '%');
+          }
+        },
+        (err) => {
+          console.error('[model] Failed to load ' + MODEL_URL + ':', err);
+          const reason = location.protocol === 'file:'
+            ? 'Model failed: page is running over file:// — start a local server'
+            : 'Model failed to load — check the file path and console';
+          showFallbackParticles(reason);
+        }
+      );
     } else {
-      velY *= 0.9; velX *= 0.9;
-    }
-    rotY += velY; rotX += velX;
-    rotX = Math.max(-1, Math.min(1, rotX));
-    group.rotation.y = rotY;
-    group.rotation.x = rotX;
-
-    if (fallbackInner){
-      fallbackInner.rotation.y -= 0.006;
-      fallbackInner.rotation.x += 0.003;
-    }
-    if (fallbackParticles){
-      fallbackParticles.rotation.y += 0.0015;
-    }
-    if (fallbackGlow){
-      const pulse = 1 + Math.sin(performance.now() * 0.0015) * 0.08;
-      fallbackGlow.scale.set(TARGET_RADIUS * 3.4 * pulse, TARGET_RADIUS * 3.4 * pulse, 1);
+      console.error('[model] THREE.GLTFLoader is not defined — the loader <script> tag likely failed to load (check network tab / ad blockers / CDN availability).');
+      showFallbackParticles('GLTFLoader script did not load — check console');
     }
 
-    renderer.render(scene, camera);
-    if (!prefersReducedMotion) requestAnimationFrame(animate);
+    let dragging = false, lastX = 0, lastY = 0;
+    let rotX = 0.1, rotY = 0.3, velX = 0, velY = 0.0012;
+
+    function pointerDown(x, y){ dragging = true; lastX = x; lastY = y; }
+    function pointerMove(x, y){
+      if (!dragging) return;
+      velY = (x - lastX) * 0.0006;
+      velX = (y - lastY) * 0.0006;
+      lastX = x; lastY = y;
+    }
+    function pointerUp(){ dragging = false; }
+
+    canvas.addEventListener('mousedown', e => pointerDown(e.clientX, e.clientY));
+    window.addEventListener('mousemove', e => pointerMove(e.clientX, e.clientY));
+    window.addEventListener('mouseup', pointerUp);
+    canvas.addEventListener('touchstart', e => { const t = e.touches[0]; pointerDown(t.clientX, t.clientY); }, { passive: true });
+    canvas.addEventListener('touchmove', e => { const t = e.touches[0]; pointerMove(t.clientX, t.clientY); }, { passive: true });
+    canvas.addEventListener('touchend', pointerUp);
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const delta = e.deltaY * 0.0025;
+      camera.position.z = Math.min(12, Math.max(2.5, camera.position.z + delta));
+    }, { passive: false });
+
+    // Only render while the stage is actually visible, so this loop isn't
+    // competing for main-thread time with scroll/paint work happening
+    // elsewhere on the page once you've scrolled past it.
+    let modelVisible = true;
+    if (typeof IntersectionObserver !== 'undefined'){
+      const visObs = new IntersectionObserver((entries) => {
+        entries.forEach(entry => { modelVisible = entry.isIntersecting; });
+      }, { rootMargin: '100px' });
+      visObs.observe(stage);
+    }
+
+    function animate(){
+      if (!dragging){
+        velY += (0.0012 - velY) * 0.02;
+        velX += (0 - velX) * 0.02;
+      } else {
+        velY *= 0.9; velX *= 0.9;
+      }
+      rotY += velY; rotX += velX;
+      rotX = Math.max(-1, Math.min(1, rotX));
+      group.rotation.y = rotY;
+      group.rotation.x = rotX;
+
+      if (fallbackInner){
+        fallbackInner.rotation.y -= 0.006;
+        fallbackInner.rotation.x += 0.003;
+      }
+      if (fallbackParticles){
+        fallbackParticles.rotation.y += 0.0015;
+      }
+      if (fallbackGlow){
+        const pulse = 1 + Math.sin(performance.now() * 0.0015) * 0.08;
+        fallbackGlow.scale.set(TARGET_RADIUS * 3.4 * pulse, TARGET_RADIUS * 3.4 * pulse, 1);
+      }
+
+      if (modelVisible) renderer.render(scene, camera);
+      if (!prefersReducedMotion) requestAnimationFrame(animate);
+    }
+    animate();
+    if (prefersReducedMotion) renderer.render(scene, camera);
+
+    function handleResize(){
+      const w = stage.clientWidth, h = stage.clientHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    }
+    window.addEventListener('resize', handleResize);
   }
-  animate();
-  if (prefersReducedMotion) renderer.render(scene, camera);
-
-  function handleResize(){
-    const w = stage.clientWidth, h = stage.clientHeight;
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
-    renderer.setSize(w, h);
-  }
-  window.addEventListener('resize', handleResize);
 })();
 
 /* ============ CONTACT FORM (front-end only) ============ */
