@@ -1,11 +1,11 @@
-/* ============ SPLASH SCREEN: real-progress preloader ============ */
-/* Runs first, before anything else. Fetches the hero video (highest
-   weight, so the hero never stalls once the splash drops), then the
-   secondary about-video and the hero stills, and drives the 0–100%
-   readout from actual bytes received rather than a fake timer.
-   Videos are pulled in as blobs and handed to their <video> elements
-   as object URLs, so by the time the splash fades the hero video is
-   already fully buffered and can play instantly. */
+/* ============ SPLASH SCREEN: hero-only gate ============ */
+/* The splash now gates on ONE thing: the hero video reaching a
+   streamable-without-stalling state (native 'canplaythrough'). It no
+   longer waits on the about-section video or the crossfade stills —
+   those cost real seconds and the visitor doesn't need them yet.
+   The video streams progressively (preload:'auto') instead of being
+   pulled down as a full blob first — that gets it playable sooner and
+   avoids holding an entire video file in memory before anything shows. */
 (function(){
   var splash = document.getElementById('splash');
   if(!splash) return;
@@ -14,29 +14,14 @@
   var percentEl = document.getElementById('splashPercent');
   var statusEl = document.getElementById('splashStatus');
   var heroVideo = document.getElementById('heroVideo');
-  var aboutVideo = document.getElementById('aboutVideo');
 
   var statusSteps = [
     [0, 'Initializing experience…'],
-    [12, 'Loading hero visuals…'],
-    [55, 'Buffering supporting media…'],
-    [85, 'Calibrating interface…'],
-    [98, 'Finishing up…']
+    [15, 'Loading hero visuals…'],
+    [45, 'Buffering video…'],
+    [85, 'Almost ready…'],
+    [97, 'Finishing up…']
   ];
-
-  var assets = [
-    { url: heroVideo && heroVideo.dataset.src, weight: 55, target: heroVideo, kind: 'video', progress: 0 },
-    { url: aboutVideo && aboutVideo.dataset.src, weight: 20, target: aboutVideo, kind: 'video', progress: 0 },
-    { url: 'assets/hero1.png', weight: 5, kind: 'image', progress: 0 },
-    { url: 'assets/hero2.png', weight: 5, kind: 'image', progress: 0 },
-    { url: 'assets/hero3.png', weight: 5, kind: 'image', progress: 0 },
-    { url: 'assets/hero4.png', weight: 5, kind: 'image', progress: 0 },
-    { url: 'assets/hero5.png', weight: 5, kind: 'image', progress: 0 }
-  ].filter(function(a){ return !!a.url; });
-
-  var totalWeight = assets.reduce(function(sum, a){ return sum + a.weight; }, 0) || 1;
-  var displayed = 0;
-  var allSettled = false;
 
   function statusFor(pct){
     var msg = statusSteps[0][1];
@@ -46,15 +31,50 @@
     return msg;
   }
 
-  function targetPercent(){
-    if(allSettled) return 100;
-    var loaded = assets.reduce(function(sum, a){ return sum + a.weight * a.progress; }, 0);
-    return Math.min(99, (loaded / totalWeight) * 100);
+  var heroTarget = 0;
+  var displayed = 0;
+  var heroSettled = false;
+
+  function bumpTarget(pct){
+    if(pct > heroTarget) heroTarget = pct;
   }
 
+  if(heroVideo && heroVideo.dataset.src){
+    heroVideo.addEventListener('loadedmetadata', function(){ bumpTarget(15); });
+    // Track real buffered-vs-duration progress rather than a fake timer.
+    heroVideo.addEventListener('progress', function(){
+      if(!heroVideo.duration || !isFinite(heroVideo.duration)) return;
+      var buf = heroVideo.buffered;
+      if(!buf.length) return;
+      var bufferedEnd = buf.end(buf.length - 1);
+      var ratio = Math.min(1, bufferedEnd / heroVideo.duration);
+      bumpTarget(15 + ratio * 70); // caps at 85% here; canplaythrough takes it the rest of the way
+    });
+    // This is the actual gate: the browser reporting it can play through
+    // without needing to pause and rebuffer.
+    heroVideo.addEventListener('canplaythrough', function(){
+      bumpTarget(97);
+      heroSettled = true;
+    });
+    // Never trap someone behind a splash for a video that failed to load —
+    // the hero's own error handler further down swaps in the poster image.
+    heroVideo.addEventListener('error', function(){ heroSettled = true; });
+
+    heroVideo.preload = 'auto';
+    heroVideo.src = heroVideo.dataset.src;
+    heroVideo.load();
+  } else {
+    heroSettled = true; // no hero video configured — nothing to wait on
+  }
+
+  // Hard ceiling so a stalled request on a slow or blocked connection
+  // never traps someone on the splash screen indefinitely.
+  var SAFETY_MS = 12000;
+  setTimeout(function(){ heroSettled = true; }, SAFETY_MS);
+
   function tick(){
-    var target = targetPercent();
-    displayed += Math.max(0.5, (target - displayed) / 5);
+    var target = heroSettled ? 100 : heroTarget;
+    displayed += Math.max(0.6, (target - displayed) / 5);
     if(displayed > target) displayed = target;
 
     var rounded = Math.round(displayed);
@@ -62,70 +82,13 @@
     if(barFill) barFill.style.width = displayed + '%';
     if(statusEl) statusEl.textContent = statusFor(rounded);
 
-    if(allSettled && rounded >= 99){
-      if(percentEl) percentEl.textContent = '100%';
-      if(barFill) barFill.style.width = '100%';
+    if(heroSettled && rounded >= 100){
       finish();
       return;
     }
     requestAnimationFrame(tick);
   }
   requestAnimationFrame(tick);
-
-  function loadVideoAsset(asset){
-    return new Promise(function(resolve){
-      if(typeof XMLHttpRequest === 'undefined'){ asset.progress = 1; resolve(); return; }
-      var xhr = new XMLHttpRequest();
-      try{
-        xhr.open('GET', asset.url, true);
-      } catch(e){ asset.progress = 1; resolve(); return; }
-      xhr.responseType = 'blob';
-      xhr.onprogress = function(e){
-        asset.progress = e.lengthComputable
-          ? Math.min(0.99, e.loaded / e.total)
-          : Math.min(0.92, asset.progress + 0.04);
-      };
-      function settle(){
-        asset.progress = 1;
-        resolve();
-      }
-      xhr.onload = function(){
-        if((xhr.status === 200 || xhr.status === 0) && asset.target && xhr.response){
-          try{
-            asset.target.src = URL.createObjectURL(xhr.response);
-            asset.target.load();
-          } catch(e){ /* fall through — video keeps its poster */ }
-        }
-        settle();
-      };
-      xhr.onerror = settle;
-      xhr.ontimeout = settle;
-      xhr.timeout = 25000;
-      try{ xhr.send(); } catch(e){ settle(); }
-    });
-  }
-
-  function loadImageAsset(asset){
-    return new Promise(function(resolve){
-      var img = new Image();
-      img.onload = function(){ asset.progress = 1; resolve(); };
-      img.onerror = function(){ asset.progress = 1; resolve(); };
-      img.src = asset.url;
-    });
-  }
-
-  var loaders = assets.map(function(asset){
-    return asset.kind === 'video' ? loadVideoAsset(asset) : loadImageAsset(asset);
-  });
-
-  // Hard ceiling so a stalled request on a slow or blocked connection
-  // never traps someone on the splash screen indefinitely.
-  var safety = new Promise(function(resolve){ setTimeout(resolve, 20000); });
-
-  Promise.race([Promise.all(loaders), safety]).then(function(){
-    assets.forEach(function(a){ a.progress = 1; });
-    allSettled = true;
-  });
 
   var finished = false;
   function finish(){
@@ -139,9 +102,10 @@
       if(p && p.catch) p.catch(function(){});
     }
     // Signal that the hero video has actually begun (or attempted to begin)
-    // playing, so the reveal timer below can count from this moment rather
-    // than from page load — a slow splash preload would otherwise burn
-    // through a fixed page-load timer before the video ever starts.
+    // playing. The hero-reveal timer below counts from this moment, and
+    // — see further down — this is also the cue to start loading the
+    // about-section video, now that it's no longer competing with the
+    // hero video for bandwidth.
     document.dispatchEvent(new Event('hero-video-started'));
 
     var removed = false;
@@ -158,6 +122,26 @@
     // Belt-and-braces in case transitionend doesn't fire (e.g. tab backgrounded).
     setTimeout(cleanup, 1200);
   }
+})();
+
+/* ============ ABOUT VIDEO: deferred load ============ */
+/* Only starts downloading once the hero video is actually on screen and
+   playing (right as the splash disappears). By then it has the full
+   scroll-through-the-hero (and, worst case, the 10s reveal wait) to
+   buffer before the visitor ever reaches the About section — with none
+   of that time spent fighting the hero video for bandwidth. Streamed
+   natively (preload:'auto'), not blob-downloaded, so it starts playable
+   sooner and doesn't hold the whole file in memory. */
+(function(){
+  var aboutVideo = document.getElementById('aboutVideo');
+  if(!aboutVideo || !aboutVideo.dataset.src) return;
+
+  document.addEventListener('hero-video-started', function startAboutVideoLoad(){
+    document.removeEventListener('hero-video-started', startAboutVideoLoad);
+    aboutVideo.preload = 'auto';
+    aboutVideo.src = aboutVideo.dataset.src;
+    aboutVideo.load();
+  });
 })();
 
 document.getElementById('year').textContent = new Date().getFullYear();
@@ -279,7 +263,7 @@ updateRail();
 
 /* ============ SCROLL REVEALS (fade-up) ============ */
 const revealTargets = document.querySelectorAll(
-  '.section-eyebrow, .section-title, .scrub-content, .scrub-sticky, .tl-item, .project-card, .model-copy, .model-stage, .skill-card, .contact-form, .contact-links'
+  '.section-eyebrow, .section-title, .scrub-content, .scrub-sticky, .tl-item, .project-card, .skill-card, .contact-form, .contact-links'
 );
 revealTargets.forEach(el => el.classList.add('fade-up'));
 
@@ -544,10 +528,7 @@ revealTargets.forEach((el, i) => {
 /* ============ PROJECT MINI CANVASES (ambient particle sketches) ============ */
 /* Each canvas only runs its animation loop while it's actually visible in
    the viewport (IntersectionObserver), so off-screen cards don't burn CPU
-   on the main thread. That headroom matters most right as someone scrolls
-   toward the 3D Model section further down the page — with fewer things
-   competing for the thread, there's less chance a heavy frame (like the
-   model's first shader compile) lines up with a visible stutter. */
+   on the main thread. */
 function initMiniCanvas(canvas){
   const variant = canvas.dataset.variant;
   const ctx = canvas.getContext('2d');
@@ -670,331 +651,6 @@ const skillIO = new IntersectionObserver((entries) => {
   });
 }, { threshold: 0.3 });
 skillCards.forEach(c => skillIO.observe(c));
-
-/* ============ 3D MODEL SECTION (GLTF viewer of my own model) ============ */
-/* FIXED: previously this whole block (renderer creation, GLTF/Draco
-   fetch+parse, renderer.compile) ran the instant the page loaded. If the
-   .glb finished downloading/parsing right as you scrolled into the model
-   section, all of that synchronous main-thread work landed on the active
-   scroll frame — which is what showed up as the page "freezing" for a
-   couple of seconds right around that section.
-
-   Two changes fix it:
-   1. The model fetch/parse is now lazy — it only starts once the section
-      is about to enter the viewport (IntersectionObserver), instead of
-      competing with the hero/about video downloads from the first paint.
-   2. The heavy one-time work (attaching the loaded mesh, renderer.compile)
-      is deferred to requestIdleCallback (falls back to setTimeout), so it
-      runs after the browser finishes whatever scroll frame is in flight
-      instead of blocking it.
-   The render loop is also now gated by visibility, same pattern as the
-   project mini-canvases above, so it isn't spending frame budget while
-   the section is off-screen in either direction. */
-(function initModel(){
-  const stage = document.querySelector('.model-stage');
-  const canvas = document.getElementById('modelCanvas');
-  const loadingEl = document.getElementById('modelLoading');
-  if (!stage || !canvas || typeof THREE === 'undefined') return;
-
-  const MODEL_URL = 'assets/models/teresa.glb';
-  const TARGET_RADIUS = 2.4;
-
-  if (location.protocol === 'file:'){
-    console.warn(
-      '[model] Page is running from file:// — browsers block fetch() of local ' +
-      'binary files like .glb under this protocol, so the model cannot load. ' +
-      'Serve this folder over http(s):// instead, e.g. `python3 -m http.server` ' +
-      'or VS Code\'s Live Server extension, then reload.'
-    );
-  }
-
-  function idle(fn){
-    if ('requestIdleCallback' in window) requestIdleCallback(fn, { timeout: 500 });
-    else setTimeout(fn, 0);
-  }
-
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(45, stage.clientWidth / stage.clientHeight, 0.05, 100);
-  camera.position.set(0, 0, 6.5);
-
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  renderer.setSize(stage.clientWidth, stage.clientHeight);
-  if (renderer.outputEncoding !== undefined && THREE.sRGBEncoding !== undefined){
-    renderer.outputEncoding = THREE.sRGBEncoding;
-  }
-
-  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-  const key = new THREE.DirectionalLight(0xffffff, 1.1);
-  key.position.set(3, 4, 5);
-  scene.add(key);
-  const rim = new THREE.DirectionalLight(0x8b7cf6, 0.6);
-  rim.position.set(-4, -2, -3);
-  scene.add(rim);
-
-  const group = new THREE.Group();
-  scene.add(group);
-
-  let fallbackInner = null;
-  let fallbackGlow = null;
-  let fallbackParticles = null;
-
-  function frameObject(object){
-    const box = new THREE.Box3().setFromObject(object);
-    const size = new THREE.Vector3();
-    const center = new THREE.Vector3();
-    box.getSize(size);
-    box.getCenter(center);
-    object.position.sub(center);
-    const maxDim = Math.max(size.x, size.y, size.z) || 1;
-    const scale = (TARGET_RADIUS * 2) / maxDim;
-    object.scale.setScalar(scale);
-  }
-
-  function hideLoading(){
-    if (loadingEl) loadingEl.classList.add('is-hidden');
-  }
-
-  function createGlowTexture(hex){
-    const size = 256;
-    const c = document.createElement('canvas');
-    c.width = size; c.height = size;
-    const ctx = c.getContext('2d');
-    const grad = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size/2);
-    grad.addColorStop(0, hex + 'e6');
-    grad.addColorStop(0.45, hex + '40');
-    grad.addColorStop(1, hex + '00');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, size, size);
-    return new THREE.CanvasTexture(c);
-  }
-
-  function showFallbackParticles(reasonText){
-    hideLoading();
-    if (reasonText) console.warn('[model] ' + reasonText);
-
-    const fallbackGroup = new THREE.Group();
-
-    const glowTex = createGlowTexture('#3b5bfd');
-    const glowMat = new THREE.SpriteMaterial({
-      map: glowTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
-    });
-    const glowSprite = new THREE.Sprite(glowMat);
-    glowSprite.scale.set(TARGET_RADIUS * 3.4, TARGET_RADIUS * 3.4, 1);
-    fallbackGroup.add(glowSprite);
-    fallbackGlow = glowSprite;
-
-    const outerGeo = new THREE.IcosahedronGeometry(TARGET_RADIUS * 0.95, 1);
-    const outerMat = new THREE.MeshBasicMaterial({
-      color: 0x3b5bfd, wireframe: true, transparent: true, opacity: 0.55
-    });
-    fallbackGroup.add(new THREE.Mesh(outerGeo, outerMat));
-
-    const innerGeo = new THREE.IcosahedronGeometry(TARGET_RADIUS * 0.55, 2);
-    const innerMat = new THREE.MeshBasicMaterial({
-      color: 0x1e3a8a, wireframe: true, transparent: true, opacity: 0.45
-    });
-    const innerMesh = new THREE.Mesh(innerGeo, innerMat);
-    fallbackGroup.add(innerMesh);
-    fallbackInner = innerMesh;
-
-    const PARTICLE_COUNT = 160;
-    const positions = new Float32Array(PARTICLE_COUNT * 3);
-    for (let i = 0; i < PARTICLE_COUNT; i++){
-      const phi = Math.acos(-1 + (2 * i) / PARTICLE_COUNT);
-      const theta = Math.sqrt(PARTICLE_COUNT * Math.PI) * phi;
-      const r = TARGET_RADIUS * (0.92 + Math.random() * 0.18);
-      positions[i * 3] = r * Math.cos(theta) * Math.sin(phi);
-      positions[i * 3 + 1] = r * Math.sin(theta) * Math.sin(phi);
-      positions[i * 3 + 2] = r * Math.cos(phi);
-    }
-    const particleGeo = new THREE.BufferGeometry();
-    particleGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    const particleMat = new THREE.PointsMaterial({
-      color: 0x6d8bff, size: 0.045, transparent: true, opacity: 0.9,
-      blending: THREE.AdditiveBlending, depthWrite: false, sizeAttenuation: true
-    });
-    const particlePoints = new THREE.Points(particleGeo, particleMat);
-    fallbackGroup.add(particlePoints);
-    fallbackParticles = particlePoints;
-
-    group.add(fallbackGroup);
-
-    // Deferred so the fallback build never lands on a live scroll frame.
-    idle(() => renderer.compile(scene, camera));
-  }
-
-  let modelLoadStarted = false;
-  function startModelLoad(){
-    if (modelLoadStarted) return;
-    modelLoadStarted = true;
-
-    if (typeof THREE.GLTFLoader !== 'undefined'){
-      const loader = new THREE.GLTFLoader();
-
-      // teresa.glb is Draco-compressed, so GLTFLoader needs a DRACOLoader
-      // wired in or it throws "No DRACOLoader instance provided". The
-      // decoder files are fetched from Google's CDN rather than bundled
-      // locally — setDecoderConfig({type:'js'}) uses the plain-JS decoder
-      // so it doesn't need a separate .wasm MIME-type/CORS setup.
-      if (typeof THREE.DRACOLoader !== 'undefined'){
-        const dracoLoader = new THREE.DRACOLoader();
-        dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
-        dracoLoader.setDecoderConfig({ type: 'js' });
-        loader.setDRACOLoader(dracoLoader);
-      } else {
-        console.warn('[model] THREE.DRACOLoader is not defined — if the .glb is Draco-compressed it will fail to parse.');
-      }
-
-      loader.load(
-        MODEL_URL,
-        (gltf) => {
-          // Attaching the loaded mesh (frameObject + adding potentially
-          // many sub-meshes to the scene graph) and compiling shaders are
-          // both synchronous, blocking steps. Running them on an idle
-          // callback — rather than inline, right when the network request
-          // happens to resolve — is what stops this from freezing whatever
-          // scroll frame is active at that exact moment.
-          idle(() => {
-            frameObject(gltf.scene);
-            group.add(gltf.scene);
-            renderer.compile(scene, camera);
-            hideLoading();
-            console.log('[model] Loaded successfully from', MODEL_URL);
-          });
-        },
-        (xhr) => {
-          if (xhr.total){
-            console.log('[model] Loading', Math.round((xhr.loaded / xhr.total) * 100) + '%');
-          }
-        },
-        (err) => {
-          console.error('[model] Failed to load ' + MODEL_URL + ':', err);
-          const reason = location.protocol === 'file:'
-            ? 'Model failed: page is running over file:// — start a local server'
-            : 'Model failed to load — check the file path and console';
-          showFallbackParticles(reason);
-        }
-      );
-    } else {
-      console.error('[model] THREE.GLTFLoader is not defined — the loader <script> tag likely failed to load (check network tab / ad blockers / CDN availability).');
-      showFallbackParticles('GLTFLoader script did not load — check console');
-    }
-  }
-
-  // Only fetch/parse/compile the model once the section is actually about
-  // to come into view, instead of the moment the page loads. This keeps
-  // the .glb request from competing with the hero/about video downloads
-  // for bandwidth, and — combined with the idle-callback scheduling above
-  // — means the one-time heavy work no longer lands on whatever scroll
-  // frame happens to be running when it finishes.
-  if ('IntersectionObserver' in window){
-    const loadIO = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting){
-          startModelLoad();
-          loadIO.disconnect();
-        }
-      });
-    }, { rootMargin: '600px 0px' });
-    loadIO.observe(stage);
-  } else {
-    startModelLoad();
-  }
-
-  let dragging = false, lastX = 0, lastY = 0;
-  let rotX = 0.1, rotY = 0.3, velX = 0, velY = 0.0012;
-
-  function pointerDown(x, y){ dragging = true; lastX = x; lastY = y; }
-  function pointerMove(x, y){
-    if (!dragging) return;
-    velY = (x - lastX) * 0.0006;
-    velX = (y - lastY) * 0.0006;
-    lastX = x; lastY = y;
-  }
-  function pointerUp(){ dragging = false; }
-
-  canvas.addEventListener('mousedown', e => pointerDown(e.clientX, e.clientY));
-  window.addEventListener('mousemove', e => pointerMove(e.clientX, e.clientY));
-  window.addEventListener('mouseup', pointerUp);
-  canvas.addEventListener('touchstart', e => { const t = e.touches[0]; pointerDown(t.clientX, t.clientY); }, { passive: true });
-  canvas.addEventListener('touchmove', e => { const t = e.touches[0]; pointerMove(t.clientX, t.clientY); }, { passive: true });
-  canvas.addEventListener('touchend', pointerUp);
-
-  canvas.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    const delta = e.deltaY * 0.0025;
-    camera.position.z = Math.min(12, Math.max(2.5, camera.position.z + delta));
-  }, { passive: false });
-
-  // The render loop only runs while the stage is actually on screen
-  // (mirrors the mini-canvas pattern above), so it isn't competing for
-  // frame budget with scrolling while the section is off-screen.
-  let rafId = null;
-  let stageVisible = false;
-
-  function animate(){
-    if (!stageVisible){ rafId = null; return; }
-
-    if (!dragging){
-      velY += (0.0012 - velY) * 0.02;
-      velX += (0 - velX) * 0.02;
-    } else {
-      velY *= 0.9; velX *= 0.9;
-    }
-    rotY += velY; rotX += velX;
-    rotX = Math.max(-1, Math.min(1, rotX));
-    group.rotation.y = rotY;
-    group.rotation.x = rotX;
-
-    if (fallbackInner){
-      fallbackInner.rotation.y -= 0.006;
-      fallbackInner.rotation.x += 0.003;
-    }
-    if (fallbackParticles){
-      fallbackParticles.rotation.y += 0.0015;
-    }
-    if (fallbackGlow){
-      const pulse = 1 + Math.sin(performance.now() * 0.0015) * 0.08;
-      fallbackGlow.scale.set(TARGET_RADIUS * 3.4 * pulse, TARGET_RADIUS * 3.4 * pulse, 1);
-    }
-
-    renderer.render(scene, camera);
-    if (!prefersReducedMotion) rafId = requestAnimationFrame(animate);
-    else rafId = null;
-  }
-
-  function startLoop(){
-    if (rafId == null){
-      rafId = requestAnimationFrame(animate);
-    }
-  }
-
-  if ('IntersectionObserver' in window){
-    const renderIO = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        stageVisible = entry.isIntersecting;
-        if (stageVisible){
-          renderer.render(scene, camera); // paint immediately, don't wait a frame
-          startLoop();
-        }
-      });
-    }, { rootMargin: '200px 0px' });
-    renderIO.observe(stage);
-  } else {
-    stageVisible = true;
-    startLoop();
-  }
-
-  function handleResize(){
-    const w = stage.clientWidth, h = stage.clientHeight;
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
-    renderer.setSize(w, h);
-    if (stageVisible) renderer.render(scene, camera);
-  }
-  window.addEventListener('resize', handleResize);
-})();
 
 /* ============ CONTACT FORM (Firebase Firestore) ============ */
 const form = document.getElementById('contactForm');

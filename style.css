@@ -799,41 +799,6 @@ ul{ list-style:none; }
 }
 .project-link:hover{ color: var(--cyan); border-color: var(--cyan); }
 
-/* ============ MODEL ============ */
-.model-copy{ color: var(--ink-dim); max-width: 560px; margin-bottom: 40px; }
-.model-stage{
-  position: relative;
-  width: 100%;
-  height: 520px;
-  border-radius: 20px;
-  overflow: hidden;
-  background: radial-gradient(ellipse at 50% 40%, rgba(139,124,246,0.12), transparent 65%), #05070d;
-  border: 1px solid var(--line);
-}
-#modelCanvas{ width:100%; height:100%; display:block; cursor: grab; }
-#modelCanvas:active{ cursor: grabbing; }
-.model-hint{
-  position:absolute;
-  bottom: 18px; left: 20px;
-  font-family: var(--font-mono);
-  font-size: 0.9rem;
-  color: var(--cyan);
-  letter-spacing: 0.04em;
-  pointer-events:none;
-}
-.model-loading{
-  position:absolute;
-  top:50%; left:50%;
-  transform: translate(-50%,-50%);
-  font-family: var(--font-mono);
-  font-size: 0.78rem;
-  letter-spacing: 0.04em;
-  color: var(--ink-faint);
-  pointer-events:none;
-  transition: opacity .4s ease;
-}
-.model-loading.is-hidden{ opacity:0; }
-
 /* ============ SKILLS ============ */
 .skills-grid{
   display:grid;
@@ -1096,5 +1061,4 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
   .skills-grid{ grid-template-columns: 1fr; }
   .hero-cta{ flex-direction: column; width: 100%; }
   .btn{ justify-content:center; }
-  .model-stage{ height: 380px; }
 }
