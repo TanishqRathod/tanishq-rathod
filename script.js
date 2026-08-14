@@ -1,11 +1,16 @@
 /* ============ SPLASH SCREEN: hero-only gate ============ */
-/* The splash now gates on ONE thing: the hero video reaching a
-   streamable-without-stalling state (native 'canplaythrough'). It no
-   longer waits on the about-section video or the crossfade stills —
-   those cost real seconds and the visitor doesn't need them yet.
-   The video streams progressively (preload:'auto') instead of being
-   pulled down as a full blob first — that gets it playable sooner and
-   avoids holding an entire video file in memory before anything shows. */
+/* The splash now gates on the hero video being FULLY downloaded (byte-
+   accurate, via fetch + Content-Length), not just "probably won't stall"
+   (canplaythrough). We stream the response body, track received bytes
+   against Content-Length, and once every byte is in, wrap it in a Blob
+   and hand that to the <video> element as its src. At that point there
+   is nothing left to buffer — playback can't stall from a network gap.
+
+   If Content-Length is missing (some CDNs strip it) or the fetch fails
+   (e.g. CORS), we fall back to the old canplaythrough heuristic so the
+   splash still resolves sensibly instead of hanging. A hard SAFETY_MS
+   ceiling still guarantees no one gets stuck on the splash forever on a
+   dead connection. */
 (function(){
   var splash = document.getElementById('splash');
   if(!splash) return;
@@ -39,37 +44,93 @@
     if(pct > heroTarget) heroTarget = pct;
   }
 
-  if(heroVideo && heroVideo.dataset.src){
+  // Fallback path: same behavior as before (canplaythrough heuristic).
+  // Used when we can't get a reliable Content-Length to track real bytes.
+  function loadViaMediaElement(){
     heroVideo.addEventListener('loadedmetadata', function(){ bumpTarget(15); });
-    // Track real buffered-vs-duration progress rather than a fake timer.
     heroVideo.addEventListener('progress', function(){
       if(!heroVideo.duration || !isFinite(heroVideo.duration)) return;
       var buf = heroVideo.buffered;
       if(!buf.length) return;
       var bufferedEnd = buf.end(buf.length - 1);
       var ratio = Math.min(1, bufferedEnd / heroVideo.duration);
-      bumpTarget(15 + ratio * 70); // caps at 85% here; canplaythrough takes it the rest of the way
+      bumpTarget(15 + ratio * 70);
     });
-    // This is the actual gate: the browser reporting it can play through
-    // without needing to pause and rebuffer.
     heroVideo.addEventListener('canplaythrough', function(){
       bumpTarget(97);
       heroSettled = true;
     });
-    // Never trap someone behind a splash for a video that failed to load —
-    // the hero's own error handler further down swaps in the poster image.
     heroVideo.addEventListener('error', function(){ heroSettled = true; });
 
     heroVideo.preload = 'auto';
     heroVideo.src = heroVideo.dataset.src;
     heroVideo.load();
+  }
+
+  // Primary path: fetch the whole file, track real byte progress, then
+  // assign a Blob URL once 100% of it is actually in memory.
+  function loadViaFetch(src){
+    fetch(src)
+      .then(function(res){
+        if(!res.ok) throw new Error('bad status ' + res.status);
+
+        var totalHeader = res.headers.get('Content-Length');
+        var total = totalHeader ? parseInt(totalHeader, 10) : 0;
+
+        if(!res.body || !total){
+          // Can't track real bytes — fall back rather than guessing wrong.
+          loadViaMediaElement();
+          return;
+        }
+
+        var reader = res.body.getReader();
+        var received = 0;
+        var chunks = [];
+
+        function pump(){
+          return reader.read().then(function(result){
+            if(result.done){
+              var blob = new Blob(chunks);
+              var blobUrl = URL.createObjectURL(blob);
+              heroVideo.addEventListener('error', function(){ heroSettled = true; });
+              heroVideo.src = blobUrl;
+              heroVideo.load();
+              bumpTarget(100);
+              heroSettled = true;
+              return;
+            }
+            chunks.push(result.value);
+            received += result.value.length;
+            // Cap at 99 until the blob is actually assembled and assigned.
+            bumpTarget(Math.min(99, (received / total) * 100));
+            return pump();
+          });
+        }
+
+        return pump();
+      })
+      .catch(function(){
+        // Network/CORS failure on the fetch path — try the plain media
+        // element as a fallback before giving up entirely.
+        loadViaMediaElement();
+      });
+  }
+
+  if(heroVideo && heroVideo.dataset.src){
+    if(window.fetch && window.Blob && window.URL && URL.createObjectURL){
+      loadViaFetch(heroVideo.dataset.src);
+    } else {
+      loadViaMediaElement();
+    }
   } else {
     heroSettled = true; // no hero video configured — nothing to wait on
   }
 
   // Hard ceiling so a stalled request on a slow or blocked connection
-  // never traps someone on the splash screen indefinitely.
-  var SAFETY_MS = 12000;
+  // never traps someone on the splash screen indefinitely. Raised vs the
+  // old heuristic-based version since we're now waiting for full bytes,
+  // not just "probably enough to not stall" — adjust to taste.
+  var SAFETY_MS = 18000;
   setTimeout(function(){ heroSettled = true; }, SAFETY_MS);
 
   function tick(){
